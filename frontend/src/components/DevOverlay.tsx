@@ -49,13 +49,15 @@ export default function DevOverlay({
       <div className="dev-header">
         <div className="dev-badge-row">
           <span className="dev-badge">DEV MODE</span>
-          {buildNumber && buildNumber !== "dev" && (
-            <span className="dev-build-num">#{buildNumber}</span>
-          )}
         </div>
         <span className="dev-slide-count">
           {index + 1} / {total}
         </span>
+      </div>
+
+      <div className="dev-build-row">
+        <span className="dev-label">BUILD</span>
+        <span className="dev-build-value">{buildNumber || "unknown"}</span>
       </div>
 
       <div className="dev-countdown">
