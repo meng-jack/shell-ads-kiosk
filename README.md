@@ -161,6 +161,33 @@ Edit `wails.json` or `main.go`:
 
 ---
 
+## Test Playlist (jsDelivr)
+
+A ready-made test playlist lives at `api/test_playlist.json` in this repo and is served via jsDelivr CDN:
+
+```
+https://cdn.jsdelivr.net/gh/meng-jack/shell-ads-kiosk@main/api/test_playlist.json
+```
+
+Point the kiosk at it to exercise all ad types (image, video, HTML), multiple transitions, layout modes, and the 30-second duration clamp (the last entry intentionally requests 99 999 ms and will be clamped to 30 000 ms by both the Go sanitizer and the frontend normalizer):
+
+```bash
+# Windows (cmd)
+set PLAYLIST_URL=https://cdn.jsdelivr.net/gh/meng-jack/shell-ads-kiosk@main/api/test_playlist.json
+shell-ads-kiosk-windows-x64.exe
+
+# Windows (PowerShell)
+$env:PLAYLIST_URL="https://cdn.jsdelivr.net/gh/meng-jack/shell-ads-kiosk@main/api/test_playlist.json"
+.\shell-ads-kiosk-windows-x64.exe
+
+# macOS / Linux (wails dev)
+PLAYLIST_URL=https://cdn.jsdelivr.net/gh/meng-jack/shell-ads-kiosk@main/api/test_playlist.json wails dev
+```
+
+> **Note:** jsDelivr caches files aggressively. After pushing a change to `api/test_playlist.json`, append `?v=<timestamp>` or switch `@main` to a specific commit SHA to bust the cache immediately.
+
+---
+
 ## Playlist JSON Format
 
 ### Full Example

@@ -1,0 +1,47 @@
+[
+  {
+    "id": "test-image-1",
+    "name": "Unsplash – City at Night",
+    "type": "image",
+    "src": "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=1920&q=80",
+    "durationMs": 8000,
+    "transition": { "enter": "fade", "exit": "fade" },
+    "layout": { "fit": "cover" }
+  },
+  {
+    "id": "test-image-2",
+    "name": "Unsplash – Workspace",
+    "type": "image",
+    "src": "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1920&q=80",
+    "durationMs": 10000,
+    "transition": { "enter": "slide-left", "exit": "fade" },
+    "layout": { "fit": "contain", "paddingPx": 60, "background": "#0f172a" }
+  },
+  {
+    "id": "test-video-1",
+    "name": "Sample Video – Flower",
+    "type": "video",
+    "src": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+    "poster": "https://images.unsplash.com/photo-1490750967868-88df5691cc96?auto=format&fit=crop&w=1920&q=80",
+    "durationMs": 15000,
+    "transition": { "enter": "zoom", "exit": "fade" },
+    "layout": { "fit": "cover" }
+  },
+  {
+    "id": "test-html-1",
+    "name": "HTML – Announcement Card",
+    "type": "html",
+    "html": "<style>*{box-sizing:border-box;margin:0;padding:0}body{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:#0b132b;font-family:system-ui,sans-serif;color:#fff}.card{padding:48px 64px;border-radius:24px;background:linear-gradient(135deg,#1e3a5f,#0f172a);border:1px solid rgba(255,255,255,0.1);box-shadow:0 32px 64px rgba(0,0,0,0.5);text-align:center;max-width:900px}.eyebrow{font-size:14px;font-weight:700;letter-spacing:3px;opacity:.6;text-transform:uppercase;margin-bottom:20px}.headline{font-size:64px;font-weight:800;line-height:1.1;letter-spacing:-1px;margin-bottom:24px}.sub{font-size:24px;opacity:.75;line-height:1.5}</style><div class='card'><div class='eyebrow'>Tonight</div><div class='headline'>Startup Shell<br>Demo Night</div><div class='sub'>Doors open at 6 PM · Building 387</div></div>",
+    "durationMs": 12000,
+    "transition": { "enter": "slide-up", "exit": "fade" }
+  },
+  {
+    "id": "test-image-3",
+    "name": "Unsplash – Abstract Tech",
+    "type": "image",
+    "src": "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1920&q=80",
+    "durationMs": 99999,
+    "transition": { "enter": "zoom", "exit": "fade" },
+    "layout": { "fit": "cover" }
+  }
+]
