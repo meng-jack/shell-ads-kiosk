@@ -29,3 +29,7 @@ export function GetBuildNumber() {
 export function IsDevMode() {
   return window['go']['main']['App']['IsDevMode']();
 }
+
+export function SetDevMode(arg1) {
+  return window['go']['main']['App']['SetDevMode'](arg1);
+}

@@ -15,3 +15,5 @@ export function FetchPlaylist():Promise<Array<main.Ad>>;
 export function GetBuildNumber():Promise<string>;
 
 export function IsDevMode():Promise<boolean>;
+
+export function SetDevMode(arg1:any):Promise<boolean>;

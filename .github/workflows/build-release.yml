@@ -66,6 +66,15 @@ jobs:
           echo "build_number=$build_number" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
+      # ── Wails bindings ──────────────────────────────────────────────────────
+      - name: Set up Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        shell: pwsh
+
+      - name: Generate Wails TypeScript bindings
+        run: wails generate bindings
+        shell: pwsh
+
       # ── Frontend ────────────────────────────────────────────────────────────
       - name: Install frontend dependencies
         run: npm ci
@@ -78,14 +87,6 @@ jobs:
         shell: pwsh
 
       # ── Go binary ───────────────────────────────────────────────────────────
-      - name: Set up Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-        shell: pwsh
-
-      - name: Generate Wails TypeScript bindings
-        run: wails generate bindings
-        shell: pwsh
-
       - name: Tidy Go modules (resolves go.sum for any new deps)
         run: go mod tidy
         shell: pwsh
