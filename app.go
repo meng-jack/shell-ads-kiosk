@@ -59,10 +59,11 @@ type Ad struct {
 }
 
 type App struct {
-	ctx         context.Context
-	client      *http.Client
-	playlistURL string
-	cacheDir    string
+	ctx             context.Context
+	client          *http.Client
+	playlistURL     string
+	cacheDir        string
+	devModeOverride *bool // Allows runtime toggling of dev mode; nil means use IS_DEV
 }
 
 func NewApp() *App {
@@ -103,9 +104,21 @@ func newCacheHandler(cacheDir string) http.Handler {
 	})
 }
 
-// IsDevMode returns whether the binary was compiled with IS_DEV = true.
+// IsDevMode returns whether dev mode is enabled. Can be toggled at runtime via SetDevMode.
 func (a *App) IsDevMode() bool {
+	if a.devModeOverride != nil {
+		return *a.devModeOverride
+	}
 	return IS_DEV
+}
+
+// SetDevMode allows toggling dev mode at runtime. Pass nil to revert to IS_DEV.
+func (a *App) SetDevMode(enabled *bool) bool {
+	a.devModeOverride = enabled
+	if enabled == nil {
+		return IS_DEV
+	}
+	return *enabled
 }
 
 // GetBuildNumber returns the build serial number (set at compile time).

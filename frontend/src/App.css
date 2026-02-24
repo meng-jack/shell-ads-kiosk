@@ -384,3 +384,55 @@
     font-style: italic;
     letter-spacing: 0.2px;
 }
+
+/* ─── Update Indicator ─────────────────────────────────────────────────────── */
+.update-indicator {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 9998;
+    pointer-events: none;
+}
+
+.update-indicator.prod {
+    font-size: 11px;
+}
+
+.update-indicator.dev {
+    font-size: 13px;
+}
+
+.update-pulse {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #fbbf24;
+    animation: gentle-flash 2s ease-in-out infinite;
+}
+
+.update-indicator.dev .update-pulse {
+    width: 10px;
+    height: 10px;
+}
+
+.update-text {
+    color: #fbbf24;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-shadow: 0 0 4px rgba(251, 191, 36, 0.3);
+    animation: gentle-flash 2s ease-in-out infinite;
+}
+
+@keyframes gentle-flash {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
+}

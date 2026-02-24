@@ -6,12 +6,14 @@ import {
   FetchPlaylist,
   GetBuildNumber,
   IsDevMode,
+  SetDevMode,
 } from "../wailsjs/go/main/App";
 import { EventsOn } from "../wailsjs/runtime/runtime";
 import type { Ad, AdLayout, TransitionName } from "./types";
 import type { main } from "../wailsjs/go/models";
 import AdRenderer from "./components/AdRenderer";
 import DevOverlay from "./components/DevOverlay";
+import UpdateIndicator from "./components/UpdateIndicator";
 
 const DEFAULT_DURATION_MS = 25000;
 const EXIT_ANIMATION_MS = 650;
@@ -220,7 +222,7 @@ function App() {
     };
   }, [ads, activeIndex]);
 
-  // ── Dev-mode keyboard navigation (← prev, → next) ─────────────────────────
+  // ── Dev-mode keyboard navigation (← prev, → next, D: toggle dev mode) ──────
   // Immediately cancels the running timers and jumps to the adjacent ad with a
   // short exit flash so the transition still plays.
   const navigate = useCallback(
@@ -237,8 +239,20 @@ function App() {
   );
 
   useEffect(() => {
-    if (!devMode) return;
     const onKey = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+
+      // D key: toggle dev mode (always available)
+      if (key === "d") {
+        e.preventDefault();
+        SetDevMode(devMode ? null : true)
+          .then((newState) => setDevMode(newState))
+          .catch(() => {});
+        return;
+      }
+
+      // Arrow keys: only in dev mode
+      if (!devMode) return;
       if (e.key === "ArrowRight") navigate(1);
       if (e.key === "ArrowLeft") navigate(-1);
     };
@@ -301,12 +315,8 @@ function App() {
         </div>
       )}
 
-      {/* Production: unobtrusive update toast shown briefly while applying */}
-      {!devMode && updateInfo?.available && (
-        <div className="update-toast">
-          Updating to build {updateInfo.latestBuild}…
-        </div>
-      )}
+      {/* Update indicator: visible in both dev and production modes */}
+      <UpdateIndicator updateInfo={updateInfo} devMode={devMode} />
     </div>
   );
 }
