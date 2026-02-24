@@ -1,0 +1,329 @@
+.app-shell {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    color: #f5f5f5;
+    overflow: hidden;
+}
+
+.ad-viewport {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #000;
+}
+
+.ad-card {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.html-ad {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #000;
+    display: block;
+}
+
+/* ad-media is kept as fallback for bare img/video without layout wrapper */
+.ad-media {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+    display: block;
+}
+
+.placeholder {
+    width: 100%;
+    text-align: center;
+    color: #888;
+    font-size: 18px;
+    letter-spacing: 0.3px;
+}
+
+.status-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    background: linear-gradient(
+        180deg,
+        rgba(0, 0, 0, 0) 0%,
+        rgba(0, 0, 0, 0.55) 100%
+    );
+    font-size: 14px;
+}
+
+.status-count {
+    opacity: 0.7;
+}
+
+/* ─── Dev Overlay ──────────────────────────────────────────────────────────── */
+.dev-overlay {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    width: 300px;
+    background: rgba(8, 8, 18, 0.88);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 12px;
+    color: #e2e8f0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    pointer-events: none;
+    user-select: none;
+}
+
+.dev-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.dev-badge {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #fbbf24;
+    border: 1px solid #fbbf24;
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+
+.dev-slide-count {
+    font-size: 18px;
+    font-weight: 700;
+    color: #f1f5f9;
+    font-variant-numeric: tabular-nums;
+}
+
+.dev-countdown {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 2px 0 2px;
+}
+
+.dev-countdown-num {
+    font-size: 32px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: #38bdf8;
+    line-height: 1;
+}
+
+.dev-exiting-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #f87171;
+    border: 1px solid #f87171;
+    border-radius: 4px;
+    padding: 2px 5px;
+    animation: dev-blink 500ms ease infinite alternate;
+}
+
+.dev-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 99px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.dev-progress-fill {
+    height: 100%;
+    background: #38bdf8;
+    border-radius: 99px;
+    transition: width 0.1s linear;
+}
+
+.dev-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 3px 0;
+}
+
+.dev-row {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    min-height: 18px;
+}
+
+.dev-label {
+    font-size: 10px;
+    letter-spacing: 0.4px;
+    color: #64748b;
+    font-weight: 600;
+    min-width: 72px;
+    flex-shrink: 0;
+    text-transform: uppercase;
+}
+
+.dev-value {
+    flex: 1;
+    color: #cbd5e1;
+    word-break: break-all;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.dev-mono {
+    font-family: "Courier New", "Menlo", monospace;
+    font-size: 11px;
+}
+
+.dev-type-badge {
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 2px 7px;
+    color: #0f172a;
+    letter-spacing: 0.5px;
+}
+
+.dev-color-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    flex-shrink: 0;
+    align-self: center;
+}
+
+@keyframes dev-blink {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0.2;
+    }
+}
+
+/* Transitions */
+.enter-fade {
+    animation: fadeIn 520ms ease;
+}
+.exit-fade {
+    animation: fadeOut 520ms ease forwards;
+}
+
+.enter-slide-left {
+    animation: slideLeftIn 600ms ease;
+}
+.exit-slide-left {
+    animation: slideLeftOut 600ms ease forwards;
+}
+
+.enter-slide-up {
+    animation: slideUpIn 600ms ease;
+}
+.exit-slide-up {
+    animation: slideUpOut 600ms ease forwards;
+}
+
+.enter-zoom {
+    animation: zoomIn 520ms ease;
+}
+.exit-zoom {
+    animation: zoomOut 520ms ease forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes slideLeftIn {
+    from {
+        opacity: 0;
+        transform: translateX(48px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+@keyframes slideLeftOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-48px);
+    }
+}
+
+@keyframes slideUpIn {
+    from {
+        opacity: 0;
+        transform: translateY(48px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+@keyframes slideUpOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-48px);
+    }
+}
+
+@keyframes zoomIn {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+@keyframes zoomOut {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.96);
+    }
+}

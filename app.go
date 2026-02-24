@@ -1,0 +1,274 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+	"unicode"
+)
+
+type AdType string
+
+const (
+	AdTypeImage AdType = "image"
+	AdTypeVideo AdType = "video"
+	AdTypeHTML  AdType = "html"
+)
+
+type MediaFit string
+
+const (
+	FitContain MediaFit = "contain"
+	FitCover   MediaFit = "cover"
+	FitFill    MediaFit = "fill"
+	FitStretch MediaFit = "stretch"
+	FitCenter  MediaFit = "center"
+	FitNone    MediaFit = "none"
+)
+
+type Transition struct {
+	Enter string `json:"enter"`
+	Exit  string `json:"exit"`
+}
+
+type AdLayout struct {
+	Fit        MediaFit `json:"fit,omitempty"`
+	PaddingPx  int      `json:"paddingPx,omitempty"`
+	Background string   `json:"background,omitempty"`
+	Width      string   `json:"width,omitempty"`
+	Height     string   `json:"height,omitempty"`
+}
+
+type Ad struct {
+	ID         string     `json:"id"`
+	Type       AdType     `json:"type"`
+	DurationMs int        `json:"durationMs"`
+	Src        string     `json:"src,omitempty"`
+	Poster     string     `json:"poster,omitempty"`
+	HTML       string     `json:"html,omitempty"`
+	Transition Transition `json:"transition"`
+	Layout     *AdLayout  `json:"layout,omitempty"`
+}
+
+type App struct {
+	ctx         context.Context
+	client      *http.Client
+	playlistURL string
+	cacheDir    string
+}
+
+func NewApp() *App {
+	cacheBase, err := os.UserCacheDir()
+	if err != nil || cacheBase == "" {
+		cacheBase = os.TempDir()
+	}
+	cacheDir := filepath.Join(cacheBase, "kiosk-ads")
+	_ = os.MkdirAll(cacheDir, 0o755)
+
+	return &App{
+		client:      &http.Client{Timeout: 30 * time.Second},
+		playlistURL: strings.TrimSpace(os.Getenv("PLAYLIST_URL")),
+		cacheDir:    cacheDir,
+	}
+}
+
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+}
+
+// CacheHandler returns an http.Handler that serves files from the local asset cache.
+// Wails falls back to this handler for paths not found in embedded assets.
+func (a *App) CacheHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/cache/") {
+			http.NotFound(w, r)
+			return
+		}
+		filename := filepath.Base(r.URL.Path)
+		if filename == "." || filename == "/" || strings.Contains(filename, "..") {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, filepath.Join(a.cacheDir, filename))
+	})
+}
+
+// IsDevMode returns true when KIOSK_DEV=1 is set in the environment.
+func (a *App) IsDevMode() bool {
+	return os.Getenv("KIOSK_DEV") == "1"
+}
+
+// FetchPlaylist fetches the remote playlist (PLAYLIST_URL) or returns the demo playlist.
+func (a *App) FetchPlaylist() ([]Ad, error) {
+	if a.playlistURL == "" {
+		return demoPlaylist(), nil
+	}
+
+	req, err := http.NewRequestWithContext(a.context(), http.MethodGet, a.playlistURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return demoPlaylist(), nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return demoPlaylist(), errors.New("playlist request failed: " + resp.Status)
+	}
+
+	var ads []Ad
+	if err := json.NewDecoder(resp.Body).Decode(&ads); err != nil {
+		return demoPlaylist(), err
+	}
+
+	if len(ads) == 0 {
+		return demoPlaylist(), nil
+	}
+
+	return ads, nil
+}
+
+// DownloadAsset downloads a remote URL to the local cache and returns a /cache/<file>
+// path suitable for use as a src in the webview. If the file is already cached it is
+// returned immediately. Returns an empty string (no error) if caching is unavailable.
+func (a *App) DownloadAsset(adID, url string) (string, error) {
+	if url == "" || a.cacheDir == "" {
+		return "", nil
+	}
+
+	ext := filepath.Ext(strings.SplitN(url, "?", 2)[0])
+	if ext == "" {
+		ext = ".bin"
+	}
+
+	safe := sanitizeID(adID)
+	destPath := filepath.Join(a.cacheDir, safe+ext)
+
+	// Already cached – skip download.
+	if _, err := os.Stat(destPath); err == nil {
+		return "/cache/" + safe + ext, nil
+	}
+
+	req, err := http.NewRequestWithContext(a.context(), http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("download failed: %s", resp.Status)
+	}
+
+	// Write to a temp file, then atomically rename.
+	tmp, err := os.CreateTemp(a.cacheDir, "dl-*")
+	if err != nil {
+		return "", err
+	}
+	tmpName := tmp.Name()
+
+	_, copyErr := io.Copy(tmp, resp.Body)
+	tmp.Close()
+	if copyErr != nil {
+		os.Remove(tmpName)
+		return "", copyErr
+	}
+
+	if err := os.Rename(tmpName, destPath); err != nil {
+		os.Remove(tmpName)
+		return "", err
+	}
+
+	return "/cache/" + safe + ext, nil
+}
+
+// CleanupAssets removes cached files whose ad ID is not in keepIDs.
+func (a *App) CleanupAssets(keepIDs []string) error {
+	if a.cacheDir == "" {
+		return nil
+	}
+
+	keepSet := make(map[string]bool, len(keepIDs))
+	for _, id := range keepIDs {
+		keepSet[sanitizeID(id)] = true
+	}
+
+	entries, err := os.ReadDir(a.cacheDir)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		id := strings.TrimSuffix(name, filepath.Ext(name))
+		if !keepSet[id] {
+			os.Remove(filepath.Join(a.cacheDir, name))
+		}
+	}
+	return nil
+}
+
+func (a *App) context() context.Context {
+	if a.ctx != nil {
+		return a.ctx
+	}
+	return context.Background()
+}
+
+func sanitizeID(id string) string {
+	var b strings.Builder
+	for _, r := range id {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	return b.String()
+}
+
+func demoPlaylist() []Ad {
+	return []Ad{
+		{
+			ID:         "image-hero",
+			Type:       AdTypeImage,
+			Src:        "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1600&q=80",
+			DurationMs: 20000,
+			Transition: Transition{Enter: "fade", Exit: "fade"},
+			Layout:     &AdLayout{Fit: FitContain, PaddingPx: 60, Background: "#0f172a"},
+		},
+		{
+			ID:         "club-video",
+			Type:       AdTypeVideo,
+			Src:        "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+			Poster:     "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=80",
+			DurationMs: 25000,
+			Transition: Transition{Enter: "slide-up", Exit: "fade"},
+			Layout:     &AdLayout{Fit: FitCover},
+		},
+		{
+			ID:         "html-marquee",
+			Type:       AdTypeHTML,
+			HTML:       `<style>body{margin:0;display:flex;align-items:center;justify-content:center;background:#0b132b;color:#fff;font-family:sans-serif;} .badge{padding:24px 32px;border-radius:18px;background:linear-gradient(135deg,#6c63ff,#1dd3b0);box-shadow:0 20px 40px rgba(0,0,0,0.35);} .badge h1{margin:0;font-size:38px;letter-spacing:1px;} .badge p{margin:10px 0 0;font-size:18px;opacity:.9;}</style><div class="badge"><h1>Welcome to the Club</h1><p>Enjoy tonight's lineup</p></div>`,
+			DurationMs: 18000,
+			Transition: Transition{Enter: "zoom", Exit: "fade"},
+		},
+	}
+}
