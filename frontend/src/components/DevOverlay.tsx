@@ -55,11 +55,6 @@ export default function DevOverlay({
         </span>
       </div>
 
-      <div className="dev-build-row">
-        <span className="dev-label">BUILD</span>
-        <span className="dev-build-value">{buildNumber || "unknown"}</span>
-      </div>
-
       <div className="dev-countdown">
         <span className="dev-countdown-num">{secLeft}s</span>
         {isExiting && <span className="dev-exiting-badge">EXITING</span>}
@@ -70,6 +65,7 @@ export default function DevOverlay({
 
       <div className="dev-divider" />
 
+      <DevRow label="BUILD" value={buildNumber || "dev"} mono />
       <DevRow label="NAME" value={ad.name || "—"} />
       <DevRow label="ID" value={ad.id} mono fontSize="9px" />
       <div className="dev-row">

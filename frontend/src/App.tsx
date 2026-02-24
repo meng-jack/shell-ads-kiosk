@@ -241,17 +241,13 @@ function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
-
-      // D key: toggle dev mode (always available)
       if (key === "d") {
         e.preventDefault();
-        SetDevMode(devMode ? null : true)
+        SetDevMode(!devMode)
           .then((newState: boolean) => setDevMode(newState))
           .catch(() => {});
         return;
       }
-
-      // Arrow keys: only in dev mode
       if (!devMode) return;
       if (e.key === "ArrowRight") navigate(1);
       if (e.key === "ArrowLeft") navigate(-1);
