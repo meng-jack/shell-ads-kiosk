@@ -246,7 +246,7 @@ function App() {
       if (key === "d") {
         e.preventDefault();
         SetDevMode(devMode ? null : true)
-          .then((newState) => setDevMode(newState))
+          .then((newState: boolean) => setDevMode(newState))
           .catch(() => {});
         return;
       }
