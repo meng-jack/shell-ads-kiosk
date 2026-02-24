@@ -315,29 +315,30 @@ function App() {
         )}
       </div>
 
-      {devMode && activeAd ? (
-        <DevOverlay
-          ad={activeAd}
-          index={activeIndex % ads.length}
-          total={ads.length}
-          msLeft={msLeft}
-          status={status}
-          lastRefresh={lastRefresh}
-          isExiting={isExiting}
-          isCached={Boolean(localSrcsRef.current[activeAd.id])}
-          activeSrc={activeSrc}
-          buildNumber={buildNumber}
-          updateInfo={updateInfo}
-        />
-      ) : (
-        <div className="status-bar">
-          <span className="status-text">{status}</span>
-          <span className="status-count">
-            {ads.length
-              ? `${(activeIndex % ads.length) + 1} / ${ads.length}`
-              : "0 / 0"}
-          </span>
-        </div>
+      {devMode && activeAd && (
+        <>
+          <DevOverlay
+            ad={activeAd}
+            index={activeIndex % ads.length}
+            total={ads.length}
+            msLeft={msLeft}
+            status={status}
+            lastRefresh={lastRefresh}
+            isExiting={isExiting}
+            isCached={Boolean(localSrcsRef.current[activeAd.id])}
+            activeSrc={activeSrc}
+            buildNumber={buildNumber}
+            updateInfo={updateInfo}
+          />
+          <div className="status-bar">
+            <span className="status-text">{status}</span>
+            <span className="status-count">
+              {ads.length
+                ? `${(activeIndex % ads.length) + 1} / ${ads.length}`
+                : "0 / 0"}
+            </span>
+          </div>
+        </>
       )}
       <UpdateIndicator updateInfo={updateInfo} devMode={devMode} />
     </div>

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/minio/selfupdate"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -16,7 +17,7 @@ import (
 const (
 	githubOwner = "meng-jack"
 	githubRepo  = "shell-ads-kiosk"
-	assetName = "shell-ads-kiosk-windows-x64.exe"
+	assetName   = "shell-ads-kiosk-windows-x64.exe"
 )
 
 // UpdateInfo is returned to the frontend when checking for updates.
@@ -95,7 +96,7 @@ func (a *App) CheckForUpdate() (*UpdateInfo, error) {
 
 	// Tag format: "build-42"
 	latest := 0
-	if after, ok :=strings.CutPrefix(release.TagName, "build-"); ok  {
+	if after, ok := strings.CutPrefix(release.TagName, "build-"); ok {
 		latest, _ = strconv.Atoi(after)
 	}
 
@@ -171,6 +172,8 @@ func (a *App) ApplyUpdate() error {
 // startAutoUpdate is called once from App.startup. It runs a background
 // goroutine that silently checks for, downloads, and applies an update.
 // It is a no-op when IS_DEV is true or when BuildNumber has not been stamped.
+// The first check is delayed 30 seconds to allow the OS network stack to settle
+// after boot. Subsequent checks run every hour for long-running kiosk sessions.
 func (a *App) startAutoUpdate() {
 	// Never auto-update in dev mode or unstamped local builds.
 	if IS_DEV || BuildNumber == "dev" {
@@ -178,17 +181,37 @@ func (a *App) startAutoUpdate() {
 	}
 
 	go func() {
-		info, err := a.CheckForUpdate()
-		if err != nil || info == nil || !info.Available {
-			return
-		}
+		// Wait for network to be ready after OS boot before first check.
+		time.Sleep(30 * time.Second)
 
-		// Notify the frontend that an update is being applied (optional UI hook).
-		wailsRuntime.EventsEmit(a.ctx, "update:available", info)
+		for {
+			a.runUpdateCheck()
 
-		if applyErr := a.ApplyUpdate(); applyErr != nil {
-			wailsRuntime.EventsEmit(a.ctx, "update:error", applyErr.Error())
+			// Wait an hour before checking again. The kiosk may run for days
+			// without a restart, so periodic checks ensure it stays current.
+			time.Sleep(1 * time.Hour)
 		}
-		// On success ApplyUpdate() calls os.Exit(0), so nothing below runs.
 	}()
+}
+
+// runUpdateCheck performs a single check-and-apply cycle. Safe to call from
+// the background goroutine started by startAutoUpdate.
+func (a *App) runUpdateCheck() {
+	info, err := a.CheckForUpdate()
+	if err != nil || info == nil || !info.Available {
+		return
+	}
+
+	// Tell the frontend an update is about to be applied so it can show the
+	// update indicator before the process exits.
+	wailsRuntime.EventsEmit(a.ctx, "update:available", info)
+
+	// Small pause so the frontend has time to render the indicator before
+	// the process is replaced.
+	time.Sleep(2 * time.Second)
+
+	if applyErr := a.ApplyUpdate(); applyErr != nil {
+		wailsRuntime.EventsEmit(a.ctx, "update:error", applyErr.Error())
+	}
+	// On success ApplyUpdate() calls os.Exit(0), so nothing below runs.
 }
