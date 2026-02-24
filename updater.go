@@ -16,11 +16,6 @@ import (
 const (
 	githubOwner = "meng-jack"
 	githubRepo  = "shell-ads-kiosk"
-	// assetName is the fixed filename attached to every GitHub release.
-	// The self-updater downloads this file; the version is tracked by the
-	// release tag (build-<number>) rather than the file name.
-	// Note: Go uses GOARCH=amd64 internally but the binary is published as
-	// x64 to match standard Windows naming conventions.
 	assetName = "shell-ads-kiosk-windows-x64.exe"
 )
 
@@ -100,8 +95,8 @@ func (a *App) CheckForUpdate() (*UpdateInfo, error) {
 
 	// Tag format: "build-42"
 	latest := 0
-	if strings.HasPrefix(release.TagName, "build-") {
-		latest, _ = strconv.Atoi(strings.TrimPrefix(release.TagName, "build-"))
+	if after, ok :=strings.CutPrefix(release.TagName, "build-"); ok  {
+		latest, _ = strconv.Atoi(after)
 	}
 
 	return &UpdateInfo{

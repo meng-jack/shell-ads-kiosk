@@ -1,0 +1,164 @@
+.ss-root {
+    width: 100%;
+    height: 100%;
+    background: #d74034;
+    color: #fbf5f3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Subtle radial vignette to add depth */
+.ss-root::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+        ellipse at center,
+        transparent 40%,
+        rgba(0, 0, 0, 0.22) 100%
+    );
+    pointer-events: none;
+}
+
+/* Subtle texture: faint repeating dot grid */
+.ss-root::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(
+        circle,
+        rgba(251, 245, 243, 0.07) 1px,
+        transparent 1px
+    );
+    background-size: 36px 36px;
+    pointer-events: none;
+}
+
+.ss-inner {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 1380px;
+    padding: 0 96px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 26px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.ss-header {
+    text-align: center;
+}
+
+.ss-title {
+    margin: 0;
+    font-size: 110px;
+    font-weight: 800;
+    letter-spacing: -3px;
+    line-height: 1;
+    color: #fbf5f3;
+}
+
+.ss-tagline {
+    margin: 14px 0 0;
+    font-size: 27px;
+    font-weight: 400;
+    opacity: 0.85;
+    letter-spacing: 0.3px;
+}
+
+/* ── Divider ─────────────────────────────────────────────────────────────── */
+.ss-rule {
+    width: 100%;
+    border: none;
+    border-top: 1px solid rgba(251, 245, 243, 0.22);
+    margin: 0;
+}
+
+/* ── Body copy ───────────────────────────────────────────────────────────── */
+.ss-body {
+    margin: 0;
+    font-size: 20px;
+    line-height: 1.75;
+    text-align: center;
+    max-width: 860px;
+    opacity: 0.88;
+}
+
+/* ── Community highlights ────────────────────────────────────────────────── */
+.ss-highlights {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.ss-highlight {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(251, 245, 243, 0.32);
+    background: rgba(0, 0, 0, 0.14);
+    letter-spacing: 0.3px;
+    opacity: 0.82;
+}
+
+/* ── Venture value claim ─────────────────────────────────────────────────── */
+.ss-venture-value {
+    margin: 0;
+    font-size: 22px;
+    text-align: center;
+    opacity: 0.9;
+}
+
+.ss-venture-strong {
+    font-weight: 800;
+    font-size: 26px;
+}
+
+/* ── Stats row ───────────────────────────────────────────────────────────── */
+.ss-stats {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 860px;
+}
+
+.ss-stat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 16px 28px;
+}
+
+.ss-stat-num {
+    font-size: 58px;
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 1;
+}
+
+.ss-stat-label {
+    font-size: 15px;
+    font-weight: 400;
+    opacity: 0.78;
+    text-align: center;
+    line-height: 1.45;
+    white-space: pre-line;
+}
+
+.ss-stat-divider {
+    width: 1px;
+    height: 72px;
+    background: rgba(251, 245, 243, 0.22);
+    flex-shrink: 0;
+}

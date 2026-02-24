@@ -58,6 +58,13 @@ type Ad struct {
 	Layout     *AdLayout  `json:"layout,omitempty"`
 }
 
+const (
+	// Server-side duration clamping (milliseconds)
+	MinDurationMs     = 1150  // EXIT_ANIMATION_MS (650) + 500 margin
+	MaxDurationMs     = 30000 // 30 seconds hard cap
+	DefaultDurationMs = 25000 // default when not specified
+)
+
 type App struct {
 	ctx             context.Context
 	client          *http.Client
@@ -127,10 +134,12 @@ func (a *App) GetBuildNumber() string {
 	return BuildNumber
 }
 
-// FetchPlaylist fetches the remote playlist (PLAYLIST_URL) or returns the demo playlist.
+// FetchPlaylist fetches the remote playlist from PLAYLIST_URL.
+// Returns an empty slice when no URL is configured or the response is empty,
+// allowing the frontend to handle the fallback (Startup Shell standalone mode).
 func (a *App) FetchPlaylist() ([]Ad, error) {
 	if a.playlistURL == "" {
-		return demoPlaylist(), nil
+		return []Ad{}, nil
 	}
 
 	req, err := http.NewRequestWithContext(a.context(), http.MethodGet, a.playlistURL, nil)
@@ -140,24 +149,68 @@ func (a *App) FetchPlaylist() ([]Ad, error) {
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return demoPlaylist(), nil
+		return []Ad{}, nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return demoPlaylist(), errors.New("playlist request failed: " + resp.Status)
+		return []Ad{}, errors.New("playlist request failed: " + resp.Status)
 	}
 
 	var ads []Ad
 	if err := json.NewDecoder(resp.Body).Decode(&ads); err != nil {
-		return demoPlaylist(), err
+		return []Ad{}, err
 	}
 
-	if len(ads) == 0 {
-		return demoPlaylist(), nil
-	}
+	// Sanitize and clamp the remote playlist to enforce maximum durations
+	ads = sanitizeRemotePlaylist(ads)
 
 	return ads, nil
+}
+
+// sanitizeRemotePlaylist enforces defense-in-depth on any remote playlist by
+// validating types, ensuring required fields are present, sanitizing IDs, and
+// clamping durations to safe bounds. Returns a new slice with only valid ads.
+func sanitizeRemotePlaylist(ads []Ad) []Ad {
+	out := make([]Ad, 0, len(ads))
+	for _, it := range ads {
+		t := string(it.Type)
+		if t != string(AdTypeImage) && t != string(AdTypeVideo) && t != string(AdTypeHTML) {
+			// Reject unknown types coming from external systems
+			continue
+		}
+
+		// Ensure required content exists for the type
+		if (it.Type == AdTypeImage || it.Type == AdTypeVideo) && strings.TrimSpace(it.Src) == "" {
+			continue
+		}
+		if it.Type == AdTypeHTML && strings.TrimSpace(it.HTML) == "" {
+			continue
+		}
+
+		// Normalize and clamp duration. External payloads cannot request an
+		// infinite (0) duration — treat 0/negative as unspecified.
+		dur := it.DurationMs
+		if dur <= 0 {
+			dur = DefaultDurationMs
+		}
+		if dur < MinDurationMs {
+			dur = MinDurationMs
+		}
+		if dur > MaxDurationMs {
+			dur = MaxDurationMs
+		}
+		it.DurationMs = dur
+
+		// Sanitize ID and fallback name
+		it.ID = sanitizeID(it.ID)
+		if strings.TrimSpace(it.Name) == "" {
+			it.Name = it.ID
+		}
+
+		out = append(out, it)
+	}
+	return out
 }
 
 // DownloadAsset downloads a remote URL to the local cache and returns a /cache/<file>
@@ -264,36 +317,4 @@ func sanitizeID(id string) string {
 		}
 	}
 	return b.String()
-}
-
-func demoPlaylist() []Ad {
-	return []Ad{
-		{
-			ID:         "image-hero",
-			Name:       "Summer Hero Banner",
-			Type:       AdTypeImage,
-			Src:        "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1600&q=80",
-			DurationMs: 20000,
-			Transition: Transition{Enter: "fade", Exit: "fade"},
-			Layout:     &AdLayout{Fit: FitContain, PaddingPx: 60, Background: "#0f172a"},
-		},
-		{
-			ID:         "club-video",
-			Name:       "Club Promo Video",
-			Type:       AdTypeVideo,
-			Src:        "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-			Poster:     "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=80",
-			DurationMs: 25000,
-			Transition: Transition{Enter: "slide-up", Exit: "fade"},
-			Layout:     &AdLayout{Fit: FitCover},
-		},
-		{
-			ID:         "html-marquee",
-			Name:       "Welcome Message",
-			Type:       AdTypeHTML,
-			HTML:       `<style>body{margin:0;display:flex;align-items:center;justify-content:center;background:#0b132b;color:#fff;font-family:sans-serif;} .badge{padding:24px 32px;border-radius:18px;background:linear-gradient(135deg,#6c63ff,#1dd3b0);box-shadow:0 20px 40px rgba(0,0,0,0.35);} .badge h1{margin:0;font-size:38px;letter-spacing:1px;} .badge p{margin:10px 0 0;font-size:18px;opacity:.9;}</style><div class="badge"><h1>Welcome to the Club</h1><p>Enjoy tonight's lineup</p></div>`,
-			DurationMs: 18000,
-			Transition: Transition{Enter: "zoom", Exit: "fade"},
-		},
-	}
 }

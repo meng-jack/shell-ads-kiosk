@@ -14,7 +14,7 @@ export default function UpdateIndicator({ updateInfo, devMode }: Props) {
     <div className={`update-indicator ${devMode ? "dev" : "prod"}`}>
       <span className="update-pulse" />
       <span className="update-text">
-        {devMode ? "UPDATE AVAILABLE" : "Update…"}
+        {devMode ? "UPDATE READY" : "Updating…"}
       </span>
     </div>
   );

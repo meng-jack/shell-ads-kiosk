@@ -1,4 +1,4 @@
-export type AdType = "image" | "video" | "html";
+export type AdType = "image" | "video" | "html" | "startup-shell";
 export type TransitionName = "fade" | "slide-left" | "slide-up" | "zoom";
 export type MediaFit =
   | "contain"

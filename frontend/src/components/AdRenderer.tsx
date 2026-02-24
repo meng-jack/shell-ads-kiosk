@@ -2,6 +2,7 @@ import type { Ad } from "../types";
 import HtmlAd from "./ads/HtmlAd";
 import ImageAd from "./ads/ImageAd";
 import VideoAd from "./ads/VideoAd";
+import StartupShellAd from "./ads/StartupShellAd";
 
 type Props = {
   ad: Ad;
@@ -15,6 +16,8 @@ export default function AdRenderer({ ad, overrideSrc }: Props) {
   const src = overrideSrc ?? ad.src;
 
   switch (ad.type) {
+    case "startup-shell":
+      return <StartupShellAd />;
     case "image":
       return <ImageAd src={src} alt={ad.id} layout={ad.layout} />;
     case "video":

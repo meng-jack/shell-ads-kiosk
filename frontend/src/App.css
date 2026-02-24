@@ -395,6 +395,10 @@
     gap: 8px;
     z-index: 9998;
     pointer-events: none;
+    padding: 6px 10px;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
 }
 
 .update-indicator.prod {
@@ -402,7 +406,7 @@
 }
 
 .update-indicator.dev {
-    font-size: 13px;
+    font-size: 12px;
 }
 
 .update-pulse {
@@ -410,7 +414,8 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #fbbf24;
+    background: #ffffff;
+    opacity: 0.9;
     animation: gentle-flash 2s ease-in-out infinite;
 }
 
@@ -420,10 +425,10 @@
 }
 
 .update-text {
-    color: #fbbf24;
+    color: #ffffff;
     font-weight: 600;
-    letter-spacing: 0.5px;
-    text-shadow: 0 0 4px rgba(251, 191, 36, 0.3);
+    letter-spacing: 0.4px;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.45);
     animation: gentle-flash 2s ease-in-out infinite;
 }
 

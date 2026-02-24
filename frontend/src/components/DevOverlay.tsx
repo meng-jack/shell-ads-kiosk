@@ -40,8 +40,11 @@ export default function DevOverlay({
   updateInfo,
 }: Props) {
   const dur = ad.durationMs ?? 25000;
-  const pct = Math.max(0, Math.min(100, (msLeft / dur) * 100));
-  const secLeft = (msLeft / 1000).toFixed(1);
+  const isInfinite = dur === 0;
+  const pct = isInfinite
+    ? 100
+    : Math.max(0, Math.min(100, (msLeft / dur) * 100));
+  const secLeft = isInfinite ? "∞" : (msLeft / 1000).toFixed(1);
   const typeColor = TYPE_COLORS[ad.type] ?? "#94a3b8";
 
   return (
@@ -56,8 +59,13 @@ export default function DevOverlay({
       </div>
 
       <div className="dev-countdown">
-        <span className="dev-countdown-num">{secLeft}s</span>
-        {isExiting && <span className="dev-exiting-badge">EXITING</span>}
+        <span className="dev-countdown-num">
+          {secLeft}
+          {isInfinite ? "" : "s"}
+        </span>
+        {isExiting && !isInfinite && (
+          <span className="dev-exiting-badge">EXITING</span>
+        )}
       </div>
       <div className="dev-progress-bar">
         <div className="dev-progress-fill" style={{ width: `${pct}%` }} />
