@@ -12,6 +12,7 @@ interface Props {
   isCached: boolean;
   activeSrc?: string;
   buildNumber?: string;
+  playlistURL?: string;
   updateInfo?: main.UpdateInfo | null;
 }
 
@@ -37,6 +38,7 @@ export default function DevOverlay({
   isCached,
   activeSrc,
   buildNumber,
+  playlistURL,
   updateInfo,
 }: Props) {
   const dur = ad.durationMs ?? 25000;
@@ -74,6 +76,12 @@ export default function DevOverlay({
       <div className="dev-divider" />
 
       <DevRow label="BUILD" value={buildNumber || "dev"} mono />
+      <DevRow
+        label="PLAYLIST"
+        value={playlistURL ? truncate(playlistURL, 46) : "— standalone —"}
+        mono
+        highlight={!playlistURL ? "dim" : undefined}
+      />
       <DevRow label="NAME" value={ad.name || "—"} />
       <DevRow label="ID" value={ad.id} mono fontSize="9px" />
       <div className="dev-row">
@@ -126,7 +134,11 @@ export default function DevOverlay({
       )}
 
       <div className="dev-divider" />
-      <DevRow label="STATUS" value={truncate(status, 44)} />
+      <DevRow
+        label="STATUS"
+        value={truncate(status, 44)}
+        highlight={status.startsWith("Fetch error") ? "error" : undefined}
+      />
       {lastRefresh && (
         <DevRow label="REFRESHED" value={lastRefresh.toLocaleTimeString()} />
       )}
@@ -155,18 +167,29 @@ function DevRow({
   value,
   mono,
   fontSize,
+  highlight,
 }: {
   label: string;
   value: string;
   mono?: boolean;
   fontSize?: string;
+  highlight?: "error" | "dim";
 }) {
+  const valueColor =
+    highlight === "error"
+      ? "#f87171"
+      : highlight === "dim"
+        ? "#475569"
+        : undefined;
   return (
     <div className="dev-row">
       <span className="dev-label">{label}</span>
       <span
         className={`dev-value${mono ? " dev-mono" : ""}`}
-        style={fontSize ? { fontSize } : undefined}
+        style={{
+          ...(fontSize ? { fontSize } : {}),
+          ...(valueColor ? { color: valueColor } : {}),
+        }}
       >
         {value}
       </span>

@@ -5,6 +5,7 @@ import {
   DownloadAsset,
   FetchPlaylist,
   GetBuildNumber,
+  GetPlaylistURL,
   IsDevMode,
   SetDevMode,
 } from "../wailsjs/go/main/App";
@@ -114,6 +115,7 @@ function App() {
   // Dev mode
   const [devMode, setDevMode] = useState(false);
   const [buildNumber, setBuildNumber] = useState("dev");
+  const [playlistURL, setPlaylistURL] = useState("");
   const [msLeft, setMsLeft] = useState(0);
   const [updateInfo, setUpdateInfo] = useState<main.UpdateInfo | null>(null);
 
@@ -128,10 +130,11 @@ function App() {
 
   // ── One-time init ──────────────────────────────────────────────────────────
   useEffect(() => {
-    Promise.all([IsDevMode(), GetBuildNumber()])
-      .then(([isDev, build]) => {
+    Promise.all([IsDevMode(), GetBuildNumber(), GetPlaylistURL()])
+      .then(([isDev, build, url]) => {
         setDevMode(isDev);
         setBuildNumber(build);
+        setPlaylistURL(url);
       })
       .catch(() => {
         // Fallback: treat Vite dev server as dev mode
@@ -194,8 +197,10 @@ function App() {
       } else {
         setStatus("Startup Shell — standalone mode");
       }
-    } catch {
-      setStatus("Offline — showing Startup Shell");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[playlist] fetch failed:", msg);
+      setStatus(`Fetch error: ${msg}`);
       setAds(buildPlaylist([]));
     }
   }, [downloadAssetsInBackground]);
@@ -328,6 +333,7 @@ function App() {
             isCached={Boolean(localSrcsRef.current[activeAd.id])}
             activeSrc={activeSrc}
             buildNumber={buildNumber}
+            playlistURL={playlistURL}
             updateInfo={updateInfo}
           />
           <div className="status-bar">

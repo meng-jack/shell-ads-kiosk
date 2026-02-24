@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -73,6 +72,42 @@ type App struct {
 	devModeOverride *bool // Allows runtime toggling of dev mode; nil means use IS_DEV
 }
 
+// kioskConfig represents the optional kiosk.json config file that sits next to
+// the executable (or in the working directory for wails dev). It is a simple
+// fallback for environments where setting environment variables is inconvenient
+// (e.g. Windows production deployments where the exe is double-clicked).
+type kioskConfig struct {
+	PlaylistURL string `json:"playlistUrl"`
+}
+
+// loadKioskConfig tries to read a kiosk.json file, checking:
+//  1. The directory that contains the running executable (production)
+//  2. The current working directory (wails dev)
+//
+// Returns a zero-value config and no error when the file simply does not exist.
+func loadKioskConfig() kioskConfig {
+	var cfg kioskConfig
+
+	candidates := make([]string, 0, 2)
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "kiosk.json"))
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, filepath.Join(cwd, "kiosk.json"))
+	}
+
+	for _, path := range candidates {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if jsonErr := json.Unmarshal(data, &cfg); jsonErr == nil && cfg.PlaylistURL != "" {
+			return cfg
+		}
+	}
+	return cfg
+}
+
 func NewApp() *App {
 	cacheBase, err := os.UserCacheDir()
 	if err != nil || cacheBase == "" {
@@ -81,9 +116,15 @@ func NewApp() *App {
 	cacheDir := filepath.Join(cacheBase, "kiosk-ads")
 	_ = os.MkdirAll(cacheDir, 0o755)
 
+	// Priority: PLAYLIST_URL env var → kiosk.json config file → empty (standalone)
+	playlistURL := strings.TrimSpace(os.Getenv("PLAYLIST_URL"))
+	if playlistURL == "" {
+		playlistURL = strings.TrimSpace(loadKioskConfig().PlaylistURL)
+	}
+
 	return &App{
 		client:      &http.Client{Timeout: 30 * time.Second},
-		playlistURL: strings.TrimSpace(os.Getenv("PLAYLIST_URL")),
+		playlistURL: playlistURL,
 		cacheDir:    cacheDir,
 	}
 }
@@ -134,9 +175,16 @@ func (a *App) GetBuildNumber() string {
 	return BuildNumber
 }
 
-// FetchPlaylist fetches the remote playlist from PLAYLIST_URL.
-// Returns an empty slice when no URL is configured or the response is empty,
-// allowing the frontend to handle the fallback (Startup Shell standalone mode).
+// GetPlaylistURL returns the active playlist URL so the dev overlay can
+// display it. Returns an empty string when running in standalone mode.
+func (a *App) GetPlaylistURL() string {
+	return a.playlistURL
+}
+
+// FetchPlaylist fetches the remote playlist from the configured URL.
+// Returns an empty slice when no URL is configured (standalone mode).
+// Returns an error when a URL is configured but the request fails, so the
+// frontend can distinguish "no URL set" from "fetch actually broke".
 func (a *App) FetchPlaylist() ([]Ad, error) {
 	if a.playlistURL == "" {
 		return []Ad{}, nil
@@ -144,27 +192,25 @@ func (a *App) FetchPlaylist() ([]Ad, error) {
 
 	req, err := http.NewRequestWithContext(a.context(), http.MethodGet, a.playlistURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build request: %w", err)
 	}
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return []Ad{}, nil
+		return nil, fmt.Errorf("fetch playlist: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return []Ad{}, errors.New("playlist request failed: " + resp.Status)
+		return nil, fmt.Errorf("playlist server returned %s", resp.Status)
 	}
 
 	var ads []Ad
 	if err := json.NewDecoder(resp.Body).Decode(&ads); err != nil {
-		return []Ad{}, err
+		return nil, fmt.Errorf("decode playlist JSON: %w", err)
 	}
 
-	// Sanitize and clamp the remote playlist to enforce maximum durations
 	ads = sanitizeRemotePlaylist(ads)
-
 	return ads, nil
 }
 
