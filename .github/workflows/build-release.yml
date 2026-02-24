@@ -85,6 +85,7 @@ jobs:
       - name: Build Go binary
         run: |
           go build -v `
+            -tags "desktop,production" `
             -ldflags "-X main.BuildNumber=${{ steps.build_num.outputs.build_number }} -H windowsgui" `
             -o shell-ads-kiosk-windows-x64.exe
         shell: pwsh
