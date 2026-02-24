@@ -11,6 +11,11 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+// BuildNumber is stamped at compile time via -ldflags "-X main.BuildNumber=<n>".
+// It is used by the self-updater to compare against the latest GitHub release;
+// it is never displayed in the UI.
+var BuildNumber string = "dev"
+
 func main() {
 	app := NewApp()
 	err := wails.Run(&options.App{
@@ -22,7 +27,7 @@ func main() {
 		WindowStartState: options.Fullscreen,
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
-			Handler: app.CacheHandler(),
+			Handler: newCacheHandler(app.cacheDir),
 		},
 		BackgroundColour: &options.RGBA{R: 0, G: 0, B: 0, A: 1},
 		OnStartup:        app.startup,

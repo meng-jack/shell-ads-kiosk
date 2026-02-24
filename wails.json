@@ -7,7 +7,7 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "Startup Shell",
-    "email": "dev@shell.com"
+    "name": "Jiaming (Jack) Meng",
+    "email": "jackm@exoad.net"
   }
 }

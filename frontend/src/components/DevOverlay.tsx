@@ -1,4 +1,5 @@
-import type { Ad } from '../types';
+import type { Ad } from "../types";
+import type { main } from "../../wailsjs/go/models";
 
 interface Props {
   ad: Ad;
@@ -10,17 +11,19 @@ interface Props {
   isExiting: boolean;
   isCached: boolean;
   activeSrc?: string;
+  buildNumber?: string;
+  updateInfo?: main.UpdateInfo | null;
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  image: '#4ade80',
-  video: '#60a5fa',
-  html: '#f97316',
+  image: "#4ade80",
+  video: "#60a5fa",
+  html: "#f97316",
 };
 
 function truncate(str: string | undefined, n: number): string {
-  if (!str) return '—';
-  return str.length > n ? str.slice(0, n) + '…' : str;
+  if (!str) return "—";
+  return str.length > n ? str.slice(0, n) + "…" : str;
 }
 
 export default function DevOverlay({
@@ -33,16 +36,23 @@ export default function DevOverlay({
   isExiting,
   isCached,
   activeSrc,
+  buildNumber,
+  updateInfo,
 }: Props) {
   const dur = ad.durationMs ?? 25000;
   const pct = Math.max(0, Math.min(100, (msLeft / dur) * 100));
   const secLeft = (msLeft / 1000).toFixed(1);
-  const typeColor = TYPE_COLORS[ad.type] ?? '#94a3b8';
+  const typeColor = TYPE_COLORS[ad.type] ?? "#94a3b8";
 
   return (
     <div className="dev-overlay">
       <div className="dev-header">
-        <span className="dev-badge">DEV MODE</span>
+        <div className="dev-badge-row">
+          <span className="dev-badge">DEV MODE</span>
+          {buildNumber && buildNumber !== "dev" && (
+            <span className="dev-build-num">#{buildNumber}</span>
+          )}
+        </div>
         <span className="dev-slide-count">
           {index + 1} / {total}
         </span>
@@ -58,33 +68,27 @@ export default function DevOverlay({
 
       <div className="dev-divider" />
 
-      <DevRow label="ID" value={ad.id} mono />
+      <DevRow label="NAME" value={ad.name || "—"} />
+      <DevRow label="ID" value={ad.id} mono fontSize="9px" />
       <div className="dev-row">
         <span className="dev-label">TYPE</span>
-        <span
-          className="dev-type-badge"
-          style={{ background: typeColor }}
-        >
+        <span className="dev-type-badge" style={{ background: typeColor }}>
           {ad.type.toUpperCase()}
         </span>
       </div>
       <DevRow
         label="TRANSITION"
-        value={`↓ ${ad.transition?.enter ?? 'fade'}  →  ${ad.transition?.exit ?? 'fade'}`}
+        value={`↓ ${ad.transition?.enter ?? "fade"}  →  ${ad.transition?.exit ?? "fade"}`}
         mono
       />
       <DevRow label="DURATION" value={`${(dur / 1000).toFixed(1)}s`} />
 
-      {(ad.type === 'image' || ad.type === 'video') && (
+      {(ad.type === "image" || ad.type === "video") && (
         <>
-          <DevRow
-            label="SRC"
-            value={truncate(activeSrc ?? ad.src, 48)}
-            mono
-          />
+          <DevRow label="SRC" value={truncate(activeSrc ?? ad.src, 48)} mono />
           <DevRow
             label="CACHE"
-            value={isCached ? '✓ local disk' : '⬇ remote (downloading…)'}
+            value={isCached ? "✓ local disk" : "⬇ remote (downloading…)"}
           />
         </>
       )}
@@ -92,7 +96,7 @@ export default function DevOverlay({
       {ad.layout && (
         <>
           <div className="dev-divider" />
-          <DevRow label="FIT" value={ad.layout.fit ?? 'contain'} mono />
+          <DevRow label="FIT" value={ad.layout.fit ?? "contain"} mono />
           {!!ad.layout.paddingPx && (
             <DevRow label="PADDING" value={`${ad.layout.paddingPx}px`} />
           )}
@@ -120,6 +124,22 @@ export default function DevOverlay({
       {lastRefresh && (
         <DevRow label="REFRESHED" value={lastRefresh.toLocaleTimeString()} />
       )}
+      <div className="dev-row dev-hint-row">
+        <span className="dev-hint">← → arrow keys to skip ads</span>
+      </div>
+
+      {updateInfo?.available && (
+        <>
+          <div className="dev-divider" />
+          <div className="dev-row">
+            <span className="dev-label">UPDATE</span>
+            <span className="dev-update-badge">
+              build {updateInfo.currentBuild} → {updateInfo.latestBuild} ·
+              applying…
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -128,15 +148,22 @@ function DevRow({
   label,
   value,
   mono,
+  fontSize,
 }: {
   label: string;
   value: string;
   mono?: boolean;
+  fontSize?: string;
 }) {
   return (
     <div className="dev-row">
       <span className="dev-label">{label}</span>
-      <span className={`dev-value${mono ? ' dev-mono' : ''}`}>{value}</span>
+      <span
+        className={`dev-value${mono ? " dev-mono" : ""}`}
+        style={fontSize ? { fontSize } : undefined}
+      >
+        {value}
+      </span>
     </div>
   );
 }

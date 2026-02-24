@@ -98,6 +98,12 @@
     margin-bottom: 4px;
 }
 
+.dev-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .dev-badge {
     font-size: 10px;
     font-weight: 800;
@@ -106,6 +112,15 @@
     border: 1px solid #fbbf24;
     border-radius: 4px;
     padding: 2px 6px;
+    display: flex;
+    align-items: center;
+}
+
+.dev-build-num {
+    font-size: 9px;
+    font-weight: 700;
+    color: #fbbf24;
+    opacity: 0.7;
 }
 
 .dev-slide-count {
@@ -326,4 +341,46 @@
         opacity: 0;
         transform: scale(0.96);
     }
+}
+
+/* ─── Update toast (production) ────────────────────────────────────────────── */
+.update-toast {
+    position: absolute;
+    bottom: 48px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(8, 8, 18, 0.8);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: #94a3b8;
+    font-size: 12px;
+    padding: 8px 16px;
+    pointer-events: none;
+    white-space: nowrap;
+    animation: fadeIn 400ms ease;
+}
+
+/* ─── Dev overlay update row ────────────────────────────────────────────────── */
+.dev-update-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: #34d399;
+    border: 1px solid #34d399;
+    border-radius: 4px;
+    padding: 2px 6px;
+    animation: dev-blink 800ms ease infinite alternate;
+}
+
+.dev-hint-row {
+    margin-top: 2px;
+}
+
+.dev-hint {
+    font-size: 10px;
+    color: #475569;
+    font-style: italic;
+    letter-spacing: 0.2px;
 }

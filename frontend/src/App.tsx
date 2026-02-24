@@ -4,9 +4,12 @@ import {
   CleanupAssets,
   DownloadAsset,
   FetchPlaylist,
+  GetBuildNumber,
   IsDevMode,
 } from "../wailsjs/go/main/App";
+import { EventsOn } from "../wailsjs/runtime/runtime";
 import type { Ad, AdLayout, TransitionName } from "./types";
+import type { main } from "../wailsjs/go/models";
 import AdRenderer from "./components/AdRenderer";
 import DevOverlay from "./components/DevOverlay";
 
@@ -17,6 +20,7 @@ const PLAYLIST_REFRESH_MS = 60_000;
 const fallbackAds: Ad[] = [
   {
     id: "fallback-image",
+    name: "Fallback Image",
     type: "image",
     src: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1600&q=80",
     durationMs: 20000,
@@ -25,6 +29,7 @@ const fallbackAds: Ad[] = [
   },
   {
     id: "fallback-video",
+    name: "Fallback Video",
     type: "video",
     src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
     poster:
@@ -35,6 +40,7 @@ const fallbackAds: Ad[] = [
   },
   {
     id: "fallback-html",
+    name: "Fallback HTML",
     type: "html",
     html: '<style>body{margin:0;display:flex;align-items:center;justify-content:center;background:#0b132b;color:#fff;font-family:sans-serif;} .card{padding:28px 34px;border-radius:14px;background:linear-gradient(135deg,#1dd3b0,#6c63ff);box-shadow:0 18px 42px rgba(0,0,0,0.45);} .card h1{margin:0;font-size:32px;} .card p{margin:8px 0 0;font-size:18px;opacity:.92;}</style><div class="card"><h1>Tonight at the Club</h1><p>Stay hydrated and enjoy!</p></div>',
     durationMs: 16000,
@@ -62,6 +68,7 @@ const normalizeAds = (raw: unknown[]): Ad[] => {
 
     result.push({
       id: (item as any).id || `ad-${index}`,
+      name: (item as any).name || `Ad ${index + 1}`,
       type: type as Ad["type"],
       src: (item as any).src,
       poster: (item as any).poster,
@@ -89,7 +96,9 @@ function App() {
 
   // Dev mode
   const [devMode, setDevMode] = useState(false);
+  const [buildNumber, setBuildNumber] = useState("dev");
   const [msLeft, setMsLeft] = useState(0);
+  const [updateInfo, setUpdateInfo] = useState<main.UpdateInfo | null>(null);
 
   // Asset caching: localSrcs is a ref so updates don't trigger mid-play re-renders.
   // activeSrc is committed once per slot change so the currently-playing ad is stable.
@@ -102,12 +111,31 @@ function App() {
 
   // ── One-time init ──────────────────────────────────────────────────────────
   useEffect(() => {
-    IsDevMode()
-      .then(setDevMode)
+    Promise.all([IsDevMode(), GetBuildNumber()])
+      .then(([isDev, build]) => {
+        setDevMode(isDev);
+        setBuildNumber(build);
+      })
       .catch(() => {
         // Fallback: treat Vite dev server as dev mode
         setDevMode(import.meta.env.DEV);
       });
+
+    // Listen for the background updater events (emitted from updater.go).
+    const unsubAvailable = EventsOn(
+      "update:available",
+      (info: main.UpdateInfo) => {
+        setUpdateInfo(info);
+      },
+    );
+    const unsubError = EventsOn("update:error", (msg: string) => {
+      console.warn("[updater] error:", msg);
+    });
+
+    return () => {
+      unsubAvailable();
+      unsubError();
+    };
   }, []);
 
   // ── Asset download helper (fire-and-forget) ────────────────────────────────
@@ -180,6 +208,8 @@ function App() {
       Math.max(duration - EXIT_ANIMATION_MS, 500),
     );
     advanceTimer.current = window.setTimeout(
+      // Wrap back to 0 instead of letting the index grow forever so it stays
+      // within bounds even when the playlist length changes on the next refresh.
       () => setActiveIndex((i) => (i + 1) % ads.length),
       duration,
     );
@@ -189,6 +219,32 @@ function App() {
       window.clearTimeout(advanceTimer.current);
     };
   }, [ads, activeIndex]);
+
+  // ── Dev-mode keyboard navigation (← prev, → next) ─────────────────────────
+  // Immediately cancels the running timers and jumps to the adjacent ad with a
+  // short exit flash so the transition still plays.
+  const navigate = useCallback(
+    (delta: 1 | -1) => {
+      if (!ads.length) return;
+      window.clearTimeout(exitTimer.current);
+      window.clearTimeout(advanceTimer.current);
+      setIsExiting(true);
+      advanceTimer.current = window.setTimeout(() => {
+        setActiveIndex((i) => (i + delta + ads.length) % ads.length);
+      }, EXIT_ANIMATION_MS);
+    },
+    [ads.length],
+  );
+
+  useEffect(() => {
+    if (!devMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") navigate(1);
+      if (e.key === "ArrowLeft") navigate(-1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [devMode, navigate]);
 
   // ── Dev-mode countdown ticker ──────────────────────────────────────────────
   useEffect(() => {
@@ -231,6 +287,8 @@ function App() {
           isExiting={isExiting}
           isCached={Boolean(localSrcsRef.current[activeAd.id])}
           activeSrc={activeSrc}
+          buildNumber={buildNumber}
+          updateInfo={updateInfo}
         />
       ) : (
         <div className="status-bar">
@@ -240,6 +298,13 @@ function App() {
               ? `${(activeIndex % ads.length) + 1} / ${ads.length}`
               : "0 / 0"}
           </span>
+        </div>
+      )}
+
+      {/* Production: unobtrusive update toast shown briefly while applying */}
+      {!devMode && updateInfo?.available && (
+        <div className="update-toast">
+          Updating to build {updateInfo.latestBuild}…
         </div>
       )}
     </div>

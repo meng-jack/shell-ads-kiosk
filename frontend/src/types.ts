@@ -27,7 +27,8 @@ export interface AdLayout {
 }
 
 export interface Ad {
-  id: string;
+  id: string; // Internal identifier (not displayed)
+  name?: string; // User-friendly display name
   type: AdType;
   src?: string;
   poster?: string;
