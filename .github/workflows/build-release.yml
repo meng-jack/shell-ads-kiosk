@@ -86,7 +86,7 @@ jobs:
         run: |
           go build -v `
             -ldflags "-X main.BuildNumber=${{ steps.build_num.outputs.build_number }} -H windowsgui" `
-            -o shell-ads-kiosk-windows-amd64.exe
+            -o shell-ads-kiosk-windows-x64.exe
         shell: pwsh
         env:
           GOOS: windows
@@ -96,7 +96,7 @@ jobs:
       # ── GitHub Release ──────────────────────────────────────────────────────
       # Uses the official GitHub CLI (pre-installed on all runners) to create the
       # release and attach the binary in a single step.  The asset is always named
-      # shell-ads-kiosk-windows-amd64.exe so the self-updater can locate it by a
+      # shell-ads-kiosk-windows-x64.exe so the self-updater can locate it by a
       # known, stable name regardless of build number.
       - name: Create GitHub release and upload asset
         env:
@@ -116,13 +116,13 @@ jobs:
           | **Branch** | ``${{ github.ref_name }}`` |
 
           ### Download
-          ``shell-ads-kiosk-windows-amd64.exe`` — standalone Windows x64 executable, no installer required.
+          ``shell-ads-kiosk-windows-x64.exe`` — standalone Windows x64 executable, no installer required.
 
           ### Running
           ```cmd
           :: Optional – point at your playlist server
           set PLAYLIST_URL=https://api.example.com/ads/playlist.json
-          shell-ads-kiosk-windows-amd64.exe
+          shell-ads-kiosk-windows-x64.exe
           ```
 
           ### Self-update
@@ -133,5 +133,5 @@ jobs:
           gh release create $tag `
             --title "Build ${{ steps.build_num.outputs.build_number }}" `
             --notes $notes `
-            shell-ads-kiosk-windows-amd64.exe
+            shell-ads-kiosk-windows-x64.exe
         shell: pwsh

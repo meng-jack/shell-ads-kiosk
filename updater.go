@@ -19,7 +19,9 @@ const (
 	// assetName is the fixed filename attached to every GitHub release.
 	// The self-updater downloads this file; the version is tracked by the
 	// release tag (build-<number>) rather than the file name.
-	assetName = "shell-ads-kiosk-windows-amd64.exe"
+	// Note: Go uses GOARCH=amd64 internally but the binary is published as
+	// x64 to match standard Windows naming conventions.
+	assetName = "shell-ads-kiosk-windows-x64.exe"
 )
 
 // UpdateInfo is returned to the frontend when checking for updates.
