@@ -131,6 +131,8 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// Prevent Windows from going to sleep
+	PreventWindowsSleep()
 	a.startAutoUpdate()
 }
 

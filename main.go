@@ -23,6 +23,7 @@ func main() {
 		Width:            1920,
 		Height:           1080,
 		Frameless:        true,
+		Fullscreen:       true,
 		DisableResize:    true,
 		WindowStartState: options.Fullscreen,
 		AssetServer: &assetserver.Options{
