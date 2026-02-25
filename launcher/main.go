@@ -97,17 +97,24 @@ var (
 	httpClient = &http.Client{Timeout: 60 * time.Second}
 
 	// kiosk process management
-	kioskMu     sync.Mutex
-	activeKiosk *exec.Cmd
+	kioskMu        sync.Mutex
+	activeKiosk    *exec.Cmd
+	kioskPID       int
+	kioskStartedAt time.Time
+	kioskRestarts  int
 
 	// pauses the kiosk monitor loop while an update is in flight
 	updateMu sync.RWMutex
 	updating bool
 
-	// forced playlist — populated when the kiosk Z-key calls /api/activate
-	playlistMu sync.RWMutex
-	pendingAds []kioskAd // submitted by dashboard, waiting for Z on kiosk
-	forcedAds  []kioskAd // activated by kiosk Z-key, served to kiosk
+	// Three-stage ad pipeline:
+	//   submitted  — just received from dashboard, not yet reviewed
+	//   approvedAds — admin has approved, waiting for Z-key / reload to go live
+	//   forcedAds  — currently live, served to kiosk via /api/playlist
+	playlistMu   sync.RWMutex
+	submittedAds []kioskAd
+	approvedAds  []kioskAd
+	forcedAds    []kioskAd
 )
 
 // ─── Admin auth ───────────────────────────────────────────────────────────────
@@ -118,7 +125,7 @@ var adminPassword = func() string {
 	if p := strings.TrimSpace(os.Getenv("ADMIN_PASSWORD")); p != "" {
 		return p
 	}
-	return "shellnews"
+	return "iloveblackrock"
 }()
 
 type tokenEntry struct{ expiry time.Time }
@@ -162,8 +169,8 @@ func requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 	log.Printf("Shell Ads Launcher — build=%s", BuildNumber)
-	if adminPassword == "shellnews" {
-		log.Printf("Admin: using default password — set ADMIN_PASSWORD env var to override")
+	if adminPassword == "iloveblackrock" {
+		log.Printf("Admin: using default password")
 	}
 
 	exeDir := exeDirectory()
@@ -221,12 +228,16 @@ func serveDash() {
 
 	// ── Admin protected ───────────────────────────────────────────────────────
 	mux.HandleFunc("GET /api/admin/state", requireAdmin(handleAdminState))
+	mux.HandleFunc("GET /api/admin/stats", requireAdmin(handleAdminStats))
 	mux.HandleFunc("PUT /api/admin/reorder", requireAdmin(handleAdminReorder))
 	mux.HandleFunc("DELETE /api/admin/active/{id}", requireAdmin(handleAdminDeleteActive))
-	mux.HandleFunc("DELETE /api/admin/pending/{id}", requireAdmin(handleAdminDeletePending))
-	mux.HandleFunc("POST /api/admin/pending/{id}/approve", requireAdmin(handleAdminApprovePending))
+	mux.HandleFunc("DELETE /api/admin/submitted/{id}", requireAdmin(handleAdminDeleteSubmitted))
+	mux.HandleFunc("DELETE /api/admin/approved/{id}", requireAdmin(handleAdminDeleteApproved))
+	mux.HandleFunc("POST /api/admin/submitted/{id}/approve", requireAdmin(handleAdminApproveSubmitted))
+	mux.HandleFunc("POST /api/admin/approved/{id}/activate", requireAdmin(handleAdminActivateApproved))
 	mux.HandleFunc("POST /api/admin/clear", requireAdmin(handleAdminClearActive))
 	mux.HandleFunc("POST /api/admin/reload", requireAdmin(handleAdminReload))
+	mux.HandleFunc("POST /api/admin/restart-kiosk", requireAdmin(handleAdminRestartKiosk))
 	mux.HandleFunc("DELETE /api/admin/logout", requireAdmin(handleAdminLogout))
 
 	// ── SPA fallback ──────────────────────────────────────────────────────────
@@ -238,9 +249,8 @@ func serveDash() {
 	}
 }
 
-// handleSubmitAds accepts a JSON array of dashAd from the dashboard on every
-// form submit, converts them to kioskAd, and queues them as pending.
-// They are NOT served to the kiosk until the operator presses Z on the kiosk.
+// handleSubmitAds queues incoming ads as "submitted" — not visible to the kiosk
+// until an admin approves them AND either the Z key is pressed or reload is called.
 func handleSubmitAds(w http.ResponseWriter, r *http.Request) {
 	var incoming []dashAd
 	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
@@ -255,41 +265,32 @@ func handleSubmitAds(w http.ResponseWriter, r *http.Request) {
 			Name:       d.Name,
 			Type:       d.Type,
 			DurationMs: d.DurationSec * 1000,
+			Src:        d.URL,
 			Transition: adTransition{Enter: "fade", Exit: "fade"},
-		}
-		switch d.Type {
-		case "html":
-			// Use Src so the kiosk renders it as a native <iframe src="…">.
-			// Putting it in HTML would require DOMPurify to allow iframes, which
-			// it strips by default. The src path bypasses sanitization entirely.
-			ad.Src = d.URL
-		default: // image, video
-			ad.Src = d.URL
 		}
 		ads = append(ads, ad)
 	}
 
 	playlistMu.Lock()
-	pendingAds = append(pendingAds, ads...)
+	submittedAds = append(submittedAds, ads...)
 	playlistMu.Unlock()
 
-	log.Printf("Submit: %d ad(s) queued as pending (total pending: %d)", len(ads), len(pendingAds))
-
+	log.Printf("Submit: %d ad(s) queued for admin review (total submitted: %d)", len(ads), len(submittedAds))
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "pending": len(pendingAds)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "submitted": len(submittedAds)})
 }
 
-// handleActivate is called by the kiosk when the operator presses Z.
-// It moves all pending ads into the active playlist and clears the pending queue.
+// handleActivate is called by the kiosk Z-key.
+// It moves ONLY admin-approved ads into the live playlist.
+// Submitted-but-not-approved ads are never touched here.
 func handleActivate(w http.ResponseWriter, r *http.Request) {
 	playlistMu.Lock()
-	forcedAds = append(forcedAds, pendingAds...)
-	activated := len(pendingAds)
-	pendingAds = nil
+	forcedAds = append(forcedAds, approvedAds...)
+	activated := len(approvedAds)
+	approvedAds = nil
 	playlistMu.Unlock()
 
-	log.Printf("Activate: %d pending ad(s) moved to active playlist (total active: %d)", activated, len(forcedAds))
-
+	log.Printf("Activate (Z-key): %d approved ad(s) → live (total live: %d)", activated, len(forcedAds))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "activated": activated, "total": len(forcedAds)})
 }
@@ -325,7 +326,7 @@ func handleAdminAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	token := generateToken()
 	adminTokens.Store(token, tokenEntry{expiry: time.Now().Add(24 * time.Hour)})
-	log.Printf("Admin: login successful")
+	log.Printf("Admin: login")
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"token": token})
 }
@@ -340,20 +341,61 @@ func handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 func handleAdminState(w http.ResponseWriter, r *http.Request) {
 	playlistMu.RLock()
 	active := forcedAds
-	pending := pendingAds
+	approved := approvedAds
+	submitted := submittedAds
 	playlistMu.RUnlock()
 
 	if active == nil {
 		active = []kioskAd{}
 	}
-	if pending == nil {
-		pending = []kioskAd{}
+	if approved == nil {
+		approved = []kioskAd{}
+	}
+	if submitted == nil {
+		submitted = []kioskAd{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"active":  active,
-		"pending": pending,
+		"active":    active,
+		"approved":  approved,
+		"submitted": submitted,
+	})
+}
+
+func handleAdminStats(w http.ResponseWriter, r *http.Request) {
+	kioskMu.Lock()
+	pid := kioskPID
+	startedAt := kioskStartedAt
+	restarts := kioskRestarts
+	running := activeKiosk != nil && activeKiosk.Process != nil
+	kioskMu.Unlock()
+
+	playlistMu.RLock()
+	nActive := len(forcedAds)
+	nApproved := len(approvedAds)
+	nSubmitted := len(submittedAds)
+	playlistMu.RUnlock()
+
+	var uptimeSec float64
+	if running && !startedAt.IsZero() {
+		uptimeSec = time.Since(startedAt).Seconds()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"kiosk": map[string]any{
+			"running":   running,
+			"pid":       pid,
+			"uptimeSec": uptimeSec,
+			"restarts":  restarts,
+		},
+		"playlist": map[string]any{
+			"active":    nActive,
+			"approved":  nApproved,
+			"submitted": nSubmitted,
+		},
+		"build": BuildNumber,
 	})
 }
 
@@ -365,7 +407,6 @@ func handleAdminReorder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad JSON", http.StatusBadRequest)
 		return
 	}
-
 	playlistMu.Lock()
 	adMap := make(map[string]kioskAd, len(forcedAds))
 	for _, a := range forcedAds {
@@ -386,8 +427,6 @@ func handleAdminReorder(w http.ResponseWriter, r *http.Request) {
 	}
 	forcedAds = newOrder
 	playlistMu.Unlock()
-
-	log.Printf("Admin: reordered active playlist (%d items)", len(forcedAds))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
@@ -395,52 +434,83 @@ func handleAdminReorder(w http.ResponseWriter, r *http.Request) {
 func handleAdminDeleteActive(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	playlistMu.Lock()
-	newList := forcedAds[:0:0]
+	n := forcedAds[:0:0]
 	for _, a := range forcedAds {
 		if a.ID != id {
-			newList = append(newList, a)
+			n = append(n, a)
 		}
 	}
-	forcedAds = newList
+	forcedAds = n
 	playlistMu.Unlock()
-
-	log.Printf("Admin: deleted active ad %q", id)
+	log.Printf("Admin: removed active %q", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
-func handleAdminDeletePending(w http.ResponseWriter, r *http.Request) {
+func handleAdminDeleteSubmitted(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	playlistMu.Lock()
-	newList := pendingAds[:0:0]
-	for _, a := range pendingAds {
+	n := submittedAds[:0:0]
+	for _, a := range submittedAds {
 		if a.ID != id {
-			newList = append(newList, a)
+			n = append(n, a)
 		}
 	}
-	pendingAds = newList
+	submittedAds = n
 	playlistMu.Unlock()
-
-	log.Printf("Admin: deleted pending ad %q", id)
+	log.Printf("Admin: rejected submitted %q", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
-func handleAdminApprovePending(w http.ResponseWriter, r *http.Request) {
+func handleAdminDeleteApproved(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	playlistMu.Lock()
-	newPending := pendingAds[:0:0]
-	for _, a := range pendingAds {
+	n := approvedAds[:0:0]
+	for _, a := range approvedAds {
+		if a.ID != id {
+			n = append(n, a)
+		}
+	}
+	approvedAds = n
+	playlistMu.Unlock()
+	log.Printf("Admin: removed approved %q", id)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func handleAdminApproveSubmitted(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	playlistMu.Lock()
+	remaining := submittedAds[:0:0]
+	for _, a := range submittedAds {
+		if a.ID == id {
+			approvedAds = append(approvedAds, a)
+		} else {
+			remaining = append(remaining, a)
+		}
+	}
+	submittedAds = remaining
+	playlistMu.Unlock()
+	log.Printf("Admin: approved submitted %q → approved queue", id)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func handleAdminActivateApproved(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	playlistMu.Lock()
+	remaining := approvedAds[:0:0]
+	for _, a := range approvedAds {
 		if a.ID == id {
 			forcedAds = append(forcedAds, a)
 		} else {
-			newPending = append(newPending, a)
+			remaining = append(remaining, a)
 		}
 	}
-	pendingAds = newPending
+	approvedAds = remaining
 	playlistMu.Unlock()
-
-	log.Printf("Admin: approved pending ad %q → active", id)
+	log.Printf("Admin: activated approved %q → live", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
@@ -450,17 +520,28 @@ func handleAdminClearActive(w http.ResponseWriter, r *http.Request) {
 	n := len(forcedAds)
 	forcedAds = nil
 	playlistMu.Unlock()
-
 	log.Printf("Admin: cleared %d active ad(s)", n)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "cleared": n})
 }
 
+// handleAdminReload moves all approved ads → live (same as Z-key) then signals
+// the kiosk. The kiosk will pick up the new playlist on its next poll (≤60s).
 func handleAdminReload(w http.ResponseWriter, r *http.Request) {
-	// The kiosk polls /api/playlist every 60s automatically.
-	// This endpoint exists so the admin can trigger an immediate visual refresh
-	// from the dashboard — the response is instant; kiosk picks it up on next poll.
-	log.Printf("Admin: reload requested (kiosk will pick up on next poll)")
+	playlistMu.Lock()
+	forcedAds = append(forcedAds, approvedAds...)
+	activated := len(approvedAds)
+	approvedAds = nil
+	playlistMu.Unlock()
+	log.Printf("Admin: reload — %d approved ad(s) pushed live", activated)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "activated": activated})
+}
+
+func handleAdminRestartKiosk(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Admin: restart kiosk requested")
+	// stopKiosk kills the process; monitorKiosk will restart it automatically.
+	stopKiosk()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
@@ -494,9 +575,18 @@ func monitorKiosk(path string) {
 			time.Sleep(kioskRestartDelay)
 			continue
 		}
-		log.Printf("Kiosk: started (pid %d)", cmd.Process.Pid)
+
+		kioskMu.Lock()
+		kioskPID = cmd.Process.Pid
+		kioskStartedAt = time.Now()
+		kioskRestarts++
+		kioskMu.Unlock()
+		log.Printf("Kiosk: started (pid %d, restart #%d)", cmd.Process.Pid, kioskRestarts)
 
 		_ = cmd.Wait()
+		kioskMu.Lock()
+		kioskPID = 0
+		kioskMu.Unlock()
 		log.Printf("Kiosk: exited — restarting in %s", kioskRestartDelay)
 		time.Sleep(kioskRestartDelay)
 	}

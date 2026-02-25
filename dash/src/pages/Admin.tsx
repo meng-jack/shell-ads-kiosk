@@ -1,9 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { adminApi, clearToken, getToken, setToken, type KioskAd } from "../api";
+import {
+  adminApi,
+  clearToken,
+  getToken,
+  setToken,
+  type AdminStats,
+  type KioskAd,
+} from "../api";
 import "./Admin.css";
 
 function truncate(s: string, n: number) {
   return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+function fmtUptime(sec: number): string {
+  if (sec < 60) return `${Math.floor(sec)}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${Math.floor(sec % 60)}s`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return `${h}h ${m}m`;
 }
 
 // ─── Login ────────────────────────────────────────────────────────────────────
@@ -13,7 +28,6 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
@@ -62,28 +76,98 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-// ─── Ad row ───────────────────────────────────────────────────────────────────
+// ─── Preview panel ────────────────────────────────────────────────────────────
 
-interface ActiveRowProps {
-  ad: KioskAd;
-  index: number;
-  total: number;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onDelete: () => void;
+function Preview({ ad, onClose }: { ad: KioskAd; onClose: () => void }) {
+  return (
+    <div className="adm-preview-overlay" onClick={onClose}>
+      <div className="adm-preview-box" onClick={(e) => e.stopPropagation()}>
+        <div className="adm-preview-header">
+          <span className="adm-preview-title">{ad.name}</span>
+          <button className="adm-icon-btn" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <div className="adm-preview-stage">
+          {ad.type === "image" && ad.src && (
+            <img src={ad.src} alt={ad.name} className="adm-preview-img" />
+          )}
+          {ad.type === "video" && ad.src && (
+            <video
+              src={ad.src}
+              className="adm-preview-video"
+              autoPlay
+              muted
+              loop
+              playsInline
+              controls={false}
+            />
+          )}
+          {ad.type === "html" && ad.src && (
+            <iframe
+              src={ad.src}
+              className="adm-preview-iframe"
+              sandbox="allow-scripts allow-same-origin"
+              title={ad.name}
+            />
+          )}
+        </div>
+        <div className="adm-preview-meta">
+          <span className={`adm-type adm-type--${ad.type}`}>{ad.type}</span>
+          <span className="adm-row-dur">
+            {(ad.durationMs / 1000).toFixed(0)}s
+          </span>
+          {ad.src && (
+            <a
+              href={ad.src}
+              target="_blank"
+              rel="noreferrer"
+              className="adm-row-url"
+              title={ad.src}
+            >
+              {truncate(ad.src, 52)}
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function ActiveRow({
+// ─── Ad row (generic) ─────────────────────────────────────────────────────────
+
+interface AdRowProps {
+  ad: KioskAd;
+  index?: number;
+  total?: number;
+  stage: "active" | "approved" | "submitted";
+  onPreview: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onDelete: () => void;
+  onApprove?: () => void; // submitted → approved
+  onActivate?: () => void; // approved → active (one at a time) or active=push
+}
+
+function AdRow({
   ad,
   index,
   total,
+  stage,
+  onPreview,
   onMoveUp,
   onMoveDown,
   onDelete,
-}: ActiveRowProps) {
+  onApprove,
+  onActivate,
+}: AdRowProps) {
   return (
     <div className="adm-row">
-      <span className="adm-row-num">{index + 1}</span>
+      {stage === "active" ? (
+        <span className="adm-row-num">{(index ?? 0) + 1}</span>
+      ) : (
+        <span className={`adm-row-num adm-row-num--${stage}`}>•</span>
+      )}
       <div className="adm-row-info">
         <span className="adm-row-name">{ad.name}</span>
         <span className="adm-row-meta">
@@ -92,35 +176,58 @@ function ActiveRow({
             {(ad.durationMs / 1000).toFixed(0)}s
           </span>
           {ad.src && (
-            <a
-              className="adm-row-url"
-              href={ad.src}
-              target="_blank"
-              rel="noreferrer"
-              title={ad.src}
-            >
-              {truncate(ad.src, 40)}
-            </a>
+            <span className="adm-row-url" title={ad.src}>
+              {truncate(ad.src, 38)}
+            </span>
           )}
         </span>
       </div>
       <div className="adm-row-actions">
         <button
-          className="adm-icon-btn"
-          onClick={onMoveUp}
-          disabled={index === 0}
-          title="Move up"
+          className="adm-icon-btn adm-icon-btn--preview"
+          onClick={onPreview}
+          title="Preview"
         >
-          ↑
+          ⊙
         </button>
-        <button
-          className="adm-icon-btn"
-          onClick={onMoveDown}
-          disabled={index === total - 1}
-          title="Move down"
-        >
-          ↓
-        </button>
+        {stage === "active" && (
+          <>
+            <button
+              className="adm-icon-btn"
+              onClick={onMoveUp}
+              disabled={(index ?? 0) === 0}
+              title="Up"
+            >
+              ↑
+            </button>
+            <button
+              className="adm-icon-btn"
+              onClick={onMoveDown}
+              disabled={(index ?? 0) === (total ?? 1) - 1}
+              title="Down"
+            >
+              ↓
+            </button>
+          </>
+        )}
+        {stage === "submitted" && onApprove && (
+          <button
+            className="adm-icon-btn adm-icon-btn--approve"
+            onClick={onApprove}
+            title="Approve"
+          >
+            ✓
+          </button>
+        )}
+        {stage === "approved" && onActivate && (
+          <button
+            className="adm-icon-btn adm-icon-btn--activate"
+            onClick={onActivate}
+            title="Push live now"
+          >
+            ▶
+          </button>
+        )}
         <button
           className="adm-icon-btn adm-icon-btn--del"
           onClick={onDelete}
@@ -133,50 +240,56 @@ function ActiveRow({
   );
 }
 
-interface PendingRowProps {
-  ad: KioskAd;
-  onApprove: () => void;
-  onDelete: () => void;
-}
+// ─── Stats bar ────────────────────────────────────────────────────────────────
 
-function PendingRow({ ad, onApprove, onDelete }: PendingRowProps) {
+function StatsBar({
+  stats,
+  onRestart,
+}: {
+  stats: AdminStats | null;
+  onRestart: () => void;
+}) {
+  if (!stats)
+    return (
+      <div className="adm-stats-bar adm-stats-bar--loading">Loading stats…</div>
+    );
+  const k = stats.kiosk;
   return (
-    <div className="adm-row">
-      <span className="adm-row-num adm-row-num--pending">•</span>
-      <div className="adm-row-info">
-        <span className="adm-row-name">{ad.name}</span>
-        <span className="adm-row-meta">
-          <span className={`adm-type adm-type--${ad.type}`}>{ad.type}</span>
-          <span className="adm-row-dur">
-            {(ad.durationMs / 1000).toFixed(0)}s
-          </span>
-          {ad.src && (
-            <a
-              className="adm-row-url"
-              href={ad.src}
-              target="_blank"
-              rel="noreferrer"
-              title={ad.src}
-            >
-              {truncate(ad.src, 40)}
-            </a>
-          )}
+    <div className="adm-stats-bar">
+      <div className="adm-stat">
+        <span className="adm-stat-label">Kiosk</span>
+        <span
+          className={`adm-stat-val adm-stat-val--${k.running ? "green" : "red"}`}
+        >
+          {k.running ? "Running" : "Stopped"}
         </span>
       </div>
-      <div className="adm-row-actions">
+      {k.running && (
+        <>
+          <div className="adm-stat">
+            <span className="adm-stat-label">Uptime</span>
+            <span className="adm-stat-val">{fmtUptime(k.uptimeSec)}</span>
+          </div>
+          <div className="adm-stat">
+            <span className="adm-stat-label">PID</span>
+            <span className="adm-stat-val">{k.pid}</span>
+          </div>
+        </>
+      )}
+      <div className="adm-stat">
+        <span className="adm-stat-label">Restarts</span>
+        <span className="adm-stat-val">{k.restarts}</span>
+      </div>
+      <div className="adm-stat">
+        <span className="adm-stat-label">Build</span>
+        <span className="adm-stat-val">{stats.build}</span>
+      </div>
+      <div className="adm-stat adm-stat--push">
         <button
-          className="adm-icon-btn adm-icon-btn--approve"
-          onClick={onApprove}
-          title="Approve → active"
+          className="adm-btn adm-btn--ghost adm-btn--sm adm-btn--danger"
+          onClick={onRestart}
         >
-          ✓
-        </button>
-        <button
-          className="adm-icon-btn adm-icon-btn--del"
-          onClick={onDelete}
-          title="Delete"
-        >
-          ✕
+          Restart kiosk
         </button>
       </div>
     </div>
@@ -187,23 +300,28 @@ function PendingRow({ ad, onApprove, onDelete }: PendingRowProps) {
 
 function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [active, setActive] = useState<KioskAd[]>([]);
-  const [pending, setPending] = useState<KioskAd[]>([]);
+  const [approved, setApproved] = useState<KioskAd[]>([]);
+  const [submitted, setSubmitted] = useState<KioskAd[]>([]);
+  const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [preview, setPreview] = useState<KioskAd | null>(null);
   const toastTimer = useRef<number>();
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 2500);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2800);
   }, []);
 
-  const fetchState = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     try {
-      const s = await adminApi.state();
+      const [s, st] = await Promise.all([adminApi.state(), adminApi.stats()]);
       setActive(s.active);
-      setPending(s.pending);
+      setApproved(s.approved);
+      setSubmitted(s.submitted);
+      setStats(st);
       setErr(null);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -215,12 +333,12 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   }, [onLogout]);
 
   useEffect(() => {
-    fetchState();
-    const id = window.setInterval(fetchState, 5000);
+    fetchAll();
+    const id = window.setInterval(fetchAll, 5000);
     return () => clearInterval(id);
-  }, [fetchState]);
+  }, [fetchAll]);
 
-  // ── Active: move up/down ──────────────────────────────────────────────────
+  // ── Active: reorder ────────────────────────────────────────────────────────
   async function move(index: number, dir: -1 | 1) {
     const next = [...active];
     const swap = index + dir;
@@ -230,7 +348,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     try {
       await adminApi.reorder(next.map((a) => a.id));
     } catch {
-      await fetchState();
+      await fetchAll();
     }
   }
 
@@ -238,59 +356,91 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     setActive((a) => a.filter((x) => x.id !== id));
     try {
       await adminApi.deleteActive(id);
-      showToast("Deleted.");
+      showToast("Removed from live.");
     } catch {
-      await fetchState();
+      await fetchAll();
     }
   }
 
   async function clearAll() {
-    if (!confirm("Clear all active ads from the playlist?")) return;
+    if (!confirm("Remove all live ads?")) return;
     setActive([]);
     try {
       const r = await adminApi.clearActive();
-      showToast(`Cleared ${r.cleared} ad(s).`);
+      showToast(`Cleared ${r.cleared}.`);
     } catch {
-      await fetchState();
+      await fetchAll();
     }
   }
 
-  async function reload() {
+  // ── Approved ───────────────────────────────────────────────────────────────
+  async function deleteApproved(id: string) {
+    setApproved((a) => a.filter((x) => x.id !== id));
     try {
-      await adminApi.reload();
-      showToast("Reload signal sent — kiosk picks up on next poll.");
+      await adminApi.deleteApproved(id);
+      showToast("Removed.");
+    } catch {
+      await fetchAll();
+    }
+  }
+
+  async function activateApproved(id: string) {
+    try {
+      await adminApi.activateApproved(id);
+      showToast("Pushed live.");
+      await fetchAll();
+    } catch {
+      await fetchAll();
+    }
+  }
+
+  async function reloadAll() {
+    try {
+      const r = await adminApi.reload();
+      showToast(`${r.activated} ad(s) pushed live.`);
+      await fetchAll();
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Error");
     }
   }
 
-  // ── Pending ───────────────────────────────────────────────────────────────
-  async function approvePending(id: string) {
+  // ── Submitted ─────────────────────────────────────────────────────────────
+  async function approveSubmitted(id: string) {
     try {
-      await adminApi.approve(id);
-      showToast("Approved → active.");
-      await fetchState();
+      await adminApi.approveSubmitted(id);
+      showToast("Approved → ready queue.");
+      await fetchAll();
     } catch {
-      await fetchState();
+      await fetchAll();
     }
   }
 
-  async function deletePending(id: string) {
-    setPending((p) => p.filter((x) => x.id !== id));
+  async function deleteSubmitted(id: string) {
+    setSubmitted((s) => s.filter((x) => x.id !== id));
     try {
-      await adminApi.deletePending(id);
-      showToast("Deleted.");
+      await adminApi.deleteSubmitted(id);
+      showToast("Rejected.");
     } catch {
-      await fetchState();
+      await fetchAll();
     }
   }
 
-  async function approveAll() {
-    for (const ad of pending) {
-      await adminApi.approve(ad.id).catch(() => {});
+  async function approveAllSubmitted() {
+    for (const ad of submitted)
+      await adminApi.approveSubmitted(ad.id).catch(() => {});
+    showToast("All approved → ready queue.");
+    await fetchAll();
+  }
+
+  // ── Kiosk ──────────────────────────────────────────────────────────────────
+  async function restartKiosk() {
+    if (!confirm("Restart the kiosk process?")) return;
+    try {
+      await adminApi.restartKiosk();
+      showToast("Kiosk restarting…");
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : "Error");
     }
-    showToast("All pending approved.");
-    await fetchState();
   }
 
   async function logout() {
@@ -314,48 +464,121 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           <p className="adm-header-sub">Admin Dashboard</p>
         </div>
         <div className="adm-header-actions">
-          <button className="adm-btn" onClick={reload}>
-            Reload kiosk
-          </button>
           <button className="adm-btn adm-btn--ghost" onClick={logout}>
             Sign out
           </button>
         </div>
       </div>
 
+      {/* Stats */}
+      <StatsBar stats={stats} onRestart={restartKiosk} />
+
       {err && (
         <div className="adm-err-banner">
-          {err} <button onClick={fetchState}>Retry</button>
+          {err} <button onClick={fetchAll}>Retry</button>
         </div>
       )}
 
-      {/* Active playlist */}
+      {/* ── Section 1: Submitted (needs review) ─────────────────────────── */}
       <section className="adm-section">
         <div className="adm-section-header">
-          <span className="adm-section-title">Active Playlist</span>
+          <span className="adm-section-title">Submitted</span>
+          <span className="adm-section-sub">Awaiting admin approval</span>
+          <span className="adm-count">{submitted.length}</span>
+          {submitted.length > 0 && (
+            <button
+              className="adm-btn adm-btn--ghost adm-btn--sm"
+              onClick={approveAllSubmitted}
+            >
+              Approve all
+            </button>
+          )}
+        </div>
+        {submitted.length === 0 ? (
+          <p className="adm-empty">No pending submissions.</p>
+        ) : (
+          <div className="adm-list">
+            {submitted.map((ad) => (
+              <AdRow
+                key={ad.id}
+                ad={ad}
+                stage="submitted"
+                onPreview={() => setPreview(ad)}
+                onApprove={() => approveSubmitted(ad.id)}
+                onDelete={() => deleteSubmitted(ad.id)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <div className="adm-rule" />
+
+      {/* ── Section 2: Approved (ready to go live) ──────────────────────── */}
+      <section className="adm-section">
+        <div className="adm-section-header">
+          <span className="adm-section-title">Approved</span>
+          <span className="adm-section-sub">
+            Ready — push live via Reload or Z key
+          </span>
+          <span className="adm-count">{approved.length}</span>
+          {approved.length > 0 && (
+            <button className="adm-btn adm-btn--sm" onClick={reloadAll}>
+              Push all live
+            </button>
+          )}
+        </div>
+        {approved.length === 0 ? (
+          <p className="adm-empty">
+            No approved ads. Approve items from Submitted above.
+          </p>
+        ) : (
+          <div className="adm-list">
+            {approved.map((ad) => (
+              <AdRow
+                key={ad.id}
+                ad={ad}
+                stage="approved"
+                onPreview={() => setPreview(ad)}
+                onActivate={() => activateApproved(ad.id)}
+                onDelete={() => deleteApproved(ad.id)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <div className="adm-rule" />
+
+      {/* ── Section 3: Live playlist ─────────────────────────────────────── */}
+      <section className="adm-section">
+        <div className="adm-section-header">
+          <span className="adm-section-title">Live Playlist</span>
+          <span className="adm-section-sub">Currently shown on kiosk</span>
           <span className="adm-count">{active.length}</span>
           {active.length > 0 && (
             <button
-              className="adm-btn adm-btn--ghost adm-btn--sm"
+              className="adm-btn adm-btn--ghost adm-btn--sm adm-btn--danger"
               onClick={clearAll}
             >
               Clear all
             </button>
           )}
         </div>
-
         {active.length === 0 ? (
           <p className="adm-empty">
-            No active ads. Approve pending items or submit via the main page.
+            Nothing live. Approve and push ads from the sections above.
           </p>
         ) : (
           <div className="adm-list">
             {active.map((ad, i) => (
-              <ActiveRow
+              <AdRow
                 key={ad.id}
                 ad={ad}
                 index={i}
                 total={active.length}
+                stage="active"
+                onPreview={() => setPreview(ad)}
                 onMoveUp={() => move(i, -1)}
                 onMoveDown={() => move(i, 1)}
                 onDelete={() => deleteActive(ad.id)}
@@ -365,39 +588,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         )}
       </section>
 
-      <div className="adm-rule" />
-
-      {/* Pending queue */}
-      <section className="adm-section">
-        <div className="adm-section-header">
-          <span className="adm-section-title">Pending Queue</span>
-          <span className="adm-count">{pending.length}</span>
-          {pending.length > 0 && (
-            <button
-              className="adm-btn adm-btn--ghost adm-btn--sm"
-              onClick={approveAll}
-            >
-              Approve all
-            </button>
-          )}
-        </div>
-
-        {pending.length === 0 ? (
-          <p className="adm-empty">No pending submissions.</p>
-        ) : (
-          <div className="adm-list">
-            {pending.map((ad) => (
-              <PendingRow
-                key={ad.id}
-                ad={ad}
-                onApprove={() => approvePending(ad.id)}
-                onDelete={() => deletePending(ad.id)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
+      {preview && <Preview ad={preview} onClose={() => setPreview(null)} />}
       {toast && <div className="adm-toast">{toast}</div>}
     </div>
   );
@@ -407,12 +598,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
 export default function Admin() {
   const [authed, setAuthed] = useState(() => getToken() !== null);
-
   function handleLogout() {
     clearToken();
     setAuthed(false);
   }
-
   if (!authed) return <Login onSuccess={() => setAuthed(true)} />;
   return <Dashboard onLogout={handleLogout} />;
 }
