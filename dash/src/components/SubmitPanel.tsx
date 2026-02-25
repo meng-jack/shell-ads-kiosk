@@ -73,7 +73,7 @@ function uploadToFileIo(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "https://file.io/?expires=14d");
+    xhr.open("POST", "https://file.io/");
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable)
         onProgress(Math.round((e.loaded / e.total) * 100));
@@ -99,6 +99,7 @@ function uploadToFileIo(
     );
     xhr.addEventListener("abort", () => reject(new Error("Upload cancelled.")));
     signal.addEventListener("abort", () => xhr.abort());
+    fd.append("expires", "14d");
     xhr.send(fd);
   });
 }
