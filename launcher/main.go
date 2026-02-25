@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,16 +20,22 @@ import (
 	"github.com/minio/selfupdate"
 )
 
+// staticFiles holds the pre-built React dashboard, embedded at compile time
+// by CI (which copies dash/dist/ → launcher/static/ before go build).
+// No Node.js or npm is needed on the target machine.
+//
+//go:embed all:static
+var staticFiles embed.FS
+
 // ─── Configuration ────────────────────────────────────────────────────────────
 
 const (
-	githubOwner = "meng-jack"
-	githubRepo  = "shell-ads-kiosk"
+	githubOwner = "exoad"
+	githubRepo  = "ShellNews-Bernard"
 	bundleAsset = "shell-ads-bundle-windows-x64.zip"
 
-	kioskBin   = "kiosk.exe"
-	dashSubdir = "dash"
-	dashPort   = ":6969"
+	kioskBin = "kiosk.exe"
+	dashPort = ":6969"
 
 	// Timing
 	updateCheckDelay    = 30 * time.Second
@@ -77,8 +84,8 @@ func main() {
 	exeDir := exeDirectory()
 	log.Printf("Base directory: %s", exeDir)
 
-	// 1. Serve the React dashboard
-	go serveDash(filepath.Join(exeDir, dashSubdir))
+	// 1. Serve the embedded React dashboard — no Node/npm needed on the machine
+	go serveDash()
 
 	// 2. Launch the kiosk and restart it if it ever exits unexpectedly
 	go monitorKiosk(filepath.Join(exeDir, kioskBin))
@@ -92,9 +99,16 @@ func main() {
 
 // ─── Dashboard server ─────────────────────────────────────────────────────────
 
-func serveDash(dir string) {
-	log.Printf("Dashboard: serving %s → http://localhost%s", dir, dashPort)
-	if err := http.ListenAndServe(dashPort, http.FileServer(http.Dir(dir))); err != nil {
+func serveDash() {
+	// Serve the "static" sub-directory of the embedded FS.
+	// At build time CI copies dash/dist/* into launcher/static/ so the full
+	// React app is baked into the binary.
+	sub, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		log.Fatalf("Dashboard: embed FS error: %v", err)
+	}
+	log.Printf("Dashboard: serving embedded files → http://localhost%s", dashPort)
+	if err := http.ListenAndServe(dashPort, http.FileServer(http.FS(sub))); err != nil {
 		log.Fatalf("Dashboard server: %v", err)
 	}
 }
@@ -182,21 +196,19 @@ func fetchLatestRelease() (*ghRelease, error) {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "shell-ads-launcher/"+BuildNumber)
+	req.Header.Set("User-Agent", "ShellNews-Bernard-launcher/"+BuildNumber)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil // no releases yet
+		return nil, nil 
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API: %s", resp.Status)
 	}
-
 	var r ghRelease
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err
@@ -230,7 +242,6 @@ func checkAndApply(exeDir string) error {
 
 	log.Printf("Updater: update available build-%d → build-%d", currentBuild, latestBuild)
 
-	// Locate the bundle asset
 	var downloadURL string
 	for _, a := range release.Assets {
 		if a.Name == bundleAsset {
@@ -246,18 +257,16 @@ func checkAndApply(exeDir string) error {
 }
 
 func applyUpdate(exeDir, downloadURL string) error {
-	// Tell the kiosk monitor to stand down
 	updateMu.Lock()
 	updating = true
 	updateMu.Unlock()
-	// Only reset the flag if we return without exiting (i.e. selfupdate failed)
 	defer func() {
 		updateMu.Lock()
 		updating = false
 		updateMu.Unlock()
 	}()
 
-	// ── 1. Download bundle zip to a temp file ────────────────────────────────
+	// ── 1. Download bundle zip ───────────────────────────────────────────────
 	log.Printf("Updater: downloading %s", downloadURL)
 
 	tmpZip, err := os.CreateTemp("", "shell-ads-bundle-*.zip")
@@ -267,7 +276,7 @@ func applyUpdate(exeDir, downloadURL string) error {
 	defer os.Remove(tmpZip.Name())
 
 	req, _ := http.NewRequest(http.MethodGet, downloadURL, nil)
-	req.Header.Set("User-Agent", "shell-ads-launcher/"+BuildNumber)
+	req.Header.Set("User-Agent", "ShellNews-Bernard-launcher/"+BuildNumber)
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -284,7 +293,7 @@ func applyUpdate(exeDir, downloadURL string) error {
 	tmpZip.Close()
 	log.Printf("Updater: download complete")
 
-	// ── 2. Extract to a temp directory ───────────────────────────────────────
+	// ── 2. Extract to temp dir ───────────────────────────────────────────────
 	tmpDir, err := os.MkdirTemp("", "shell-ads-update-*")
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
@@ -296,11 +305,10 @@ func applyUpdate(exeDir, downloadURL string) error {
 	}
 	log.Printf("Updater: extracted bundle")
 
-	// ── 3. Stop the kiosk so we can replace its binary ───────────────────────
+	// ── 3. Stop kiosk, replace kiosk.exe ────────────────────────────────────
 	stopKiosk()
 	time.Sleep(postKillDelay)
 
-	// ── 4. Replace kiosk.exe ─────────────────────────────────────────────────
 	newKiosk := filepath.Join(tmpDir, "kiosk.exe")
 	if _, err := os.Stat(newKiosk); err == nil {
 		if err := copyFile(newKiosk, filepath.Join(exeDir, "kiosk.exe")); err != nil {
@@ -309,38 +317,24 @@ func applyUpdate(exeDir, downloadURL string) error {
 		log.Printf("Updater: kiosk.exe replaced")
 	}
 
-	// ── 5. Replace dash/ ─────────────────────────────────────────────────────
-	newDash := filepath.Join(tmpDir, "dash")
-	if _, err := os.Stat(newDash); err == nil {
-		oldDash := filepath.Join(exeDir, dashSubdir)
-		if err := os.RemoveAll(oldDash); err != nil {
-			log.Printf("Updater: warning — could not remove old dash/: %v", err)
-		}
-		if err := copyDir(newDash, oldDash); err != nil {
-			return fmt.Errorf("replace dash/: %w", err)
-		}
-		log.Printf("Updater: dash/ replaced")
-	}
-
-	// ── 6. Self-update launcher.exe using minio/selfupdate ───────────────────
+	// ── 4. Self-update launcher.exe (dashboard is embedded inside it) ────────
+	// The new launcher.exe already has the updated dashboard baked in —
+	// no separate dash/ folder to manage.
 	newLauncher := filepath.Join(tmpDir, "launcher.exe")
 	launcherFile, err := os.Open(newLauncher)
 	if err != nil {
-		// No launcher in bundle — kiosk monitor will restart kiosk on its own
 		log.Printf("Updater: launcher.exe not in bundle — skipping self-update")
 		return nil
 	}
 	defer launcherFile.Close()
 
-	log.Printf("Updater: applying self-update to launcher.exe...")
+	log.Printf("Updater: applying self-update to launcher.exe (contains embedded dashboard)...")
 	if err := selfupdate.Apply(launcherFile, selfupdate.Options{}); err != nil {
-		// Non-fatal: the new kiosk.exe and dash/ are already in place
 		log.Printf("Updater: self-update failed: %v — continuing with current launcher", err)
 		return nil
 	}
 
-	// Spawn the freshly-written launcher binary and exit this (old) process.
-	// The new launcher will start the kiosk and serve the dashboard.
+	// Restart the now-updated binary
 	log.Printf("Updater: restarting launcher...")
 	newCmd := exec.Command(os.Args[0], os.Args[1:]...)
 	newCmd.Stdout = os.Stdout
@@ -383,20 +377,6 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-func copyDir(src, dst string) error {
-	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, _ := filepath.Rel(src, path)
-		target := filepath.Join(dst, rel)
-		if d.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		return copyFile(path, target)
-	})
-}
-
 func extractZip(src, dst string) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
@@ -404,13 +384,12 @@ func extractZip(src, dst string) error {
 	}
 	defer r.Close()
 
-	// filepath.Clean(dst) ends without separator; add one for prefix checks
 	dstPrefix := filepath.Clean(dst) + string(os.PathSeparator)
 
 	for _, f := range r.File {
 		target := filepath.Join(dst, filepath.FromSlash(f.Name))
 
-		// Zip-slip protection: every target must be inside dst
+		// Zip-slip protection
 		if !strings.HasPrefix(filepath.Clean(target)+string(os.PathSeparator), dstPrefix) {
 			return fmt.Errorf("zip-slip detected for path: %s", f.Name)
 		}
