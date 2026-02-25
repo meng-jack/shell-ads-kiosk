@@ -61,6 +61,34 @@ type ghAsset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
+// ─── Kiosk Ad types ───────────────────────────────────────────────────────────
+// These mirror the Ad struct in the kiosk's app.go so the playlist endpoint
+// returns JSON the kiosk can consume directly.
+
+type adTransition struct {
+	Enter string `json:"enter"`
+	Exit  string `json:"exit"`
+}
+
+type kioskAd struct {
+	ID         string       `json:"id"`
+	Name       string       `json:"name"`
+	Type       string       `json:"type"`
+	DurationMs int          `json:"durationMs"`
+	Src        string       `json:"src,omitempty"`
+	HTML       string       `json:"html,omitempty"`
+	Transition adTransition `json:"transition"`
+}
+
+// dashAd is the shape the React dashboard POSTs to /api/force-ads.
+type dashAd struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Type        string `json:"type"` // "image" | "video" | "html"
+	URL         string `json:"url"`
+	DurationSec int    `json:"durationSec"`
+}
+
 // ─── Global state ─────────────────────────────────────────────────────────────
 
 var (
@@ -73,6 +101,11 @@ var (
 	// pauses the kiosk monitor loop while an update is in flight
 	updateMu sync.RWMutex
 	updating bool
+
+	// forced playlist — populated when the kiosk Z-key calls /api/activate
+	playlistMu sync.RWMutex
+	pendingAds []kioskAd // submitted by dashboard, waiting for Z on kiosk
+	forcedAds  []kioskAd // activated by kiosk Z-key, served to kiosk
 )
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
@@ -100,17 +133,96 @@ func main() {
 // ─── Dashboard server ─────────────────────────────────────────────────────────
 
 func serveDash() {
-	// Serve the "static" sub-directory of the embedded FS.
-	// At build time CI copies dash/dist/* into launcher/static/ so the full
-	// React app is baked into the binary.
 	sub, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatalf("Dashboard: embed FS error: %v", err)
 	}
-	log.Printf("Dashboard: serving embedded files → http://localhost%s", dashPort)
-	if err := http.ListenAndServe(dashPort, http.FileServer(http.FS(sub))); err != nil {
+
+	mux := http.NewServeMux()
+
+	// API — must be registered before the catch-all file server
+	mux.HandleFunc("POST /api/submit-ads", handleSubmitAds) // dashboard → pending
+	mux.HandleFunc("POST /api/activate", handleActivate)    // kiosk Z-key → active
+	mux.HandleFunc("GET /api/playlist", handlePlaylist)     // kiosk polls this
+
+	// Everything else → embedded React app
+	mux.Handle("/", http.FileServer(http.FS(sub)))
+
+	log.Printf("Dashboard: http://localhost%s", dashPort)
+	if err := http.ListenAndServe(dashPort, mux); err != nil {
 		log.Fatalf("Dashboard server: %v", err)
 	}
+}
+
+// handleSubmitAds accepts a JSON array of dashAd from the dashboard on every
+// form submit, converts them to kioskAd, and queues them as pending.
+// They are NOT served to the kiosk until the operator presses Z on the kiosk.
+func handleSubmitAds(w http.ResponseWriter, r *http.Request) {
+	var incoming []dashAd
+	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
+		http.Error(w, "bad JSON", http.StatusBadRequest)
+		return
+	}
+
+	ads := make([]kioskAd, 0, len(incoming))
+	for _, d := range incoming {
+		ad := kioskAd{
+			ID:         d.ID,
+			Name:       d.Name,
+			Type:       d.Type,
+			DurationMs: d.DurationSec * 1000,
+			Transition: adTransition{Enter: "fade", Exit: "fade"},
+		}
+		switch d.Type {
+		case "html":
+			ad.HTML = fmt.Sprintf(
+				`<iframe src="%s" style="position:fixed;inset:0;width:100%%;height:100%%;border:none;" allowfullscreen></iframe>`,
+				d.URL,
+			)
+		default:
+			ad.Src = d.URL
+		}
+		ads = append(ads, ad)
+	}
+
+	playlistMu.Lock()
+	pendingAds = append(pendingAds, ads...)
+	playlistMu.Unlock()
+
+	log.Printf("Submit: %d ad(s) queued as pending (total pending: %d)", len(ads), len(pendingAds))
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "pending": len(pendingAds)})
+}
+
+// handleActivate is called by the kiosk when the operator presses Z.
+// It moves all pending ads into the active playlist and clears the pending queue.
+func handleActivate(w http.ResponseWriter, r *http.Request) {
+	playlistMu.Lock()
+	forcedAds = append(forcedAds, pendingAds...)
+	activated := len(pendingAds)
+	pendingAds = nil
+	playlistMu.Unlock()
+
+	log.Printf("Activate: %d pending ad(s) moved to active playlist (total active: %d)", activated, len(forcedAds))
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "activated": activated, "total": len(forcedAds)})
+}
+
+// handlePlaylist serves the current active playlist as JSON.
+// The kiosk's PLAYLIST_URL points at this endpoint.
+func handlePlaylist(w http.ResponseWriter, r *http.Request) {
+	playlistMu.RLock()
+	ads := forcedAds
+	playlistMu.RUnlock()
+
+	if ads == nil {
+		ads = []kioskAd{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(ads)
 }
 
 // ─── Kiosk process management ─────────────────────────────────────────────────
@@ -129,6 +241,9 @@ func monitorKiosk(path string) {
 		cmd := exec.Command(path)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+		// Point the kiosk at the launcher's local playlist endpoint.
+		// Force-loaded ads from the dashboard Z-button are served here.
+		cmd.Env = append(os.Environ(), "PLAYLIST_URL=http://localhost:6969/api/playlist")
 
 		kioskMu.Lock()
 		activeKiosk = cmd
@@ -204,7 +319,7 @@ func fetchLatestRelease() (*ghRelease, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil 
+		return nil, nil
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API: %s", resp.Status)

@@ -269,6 +269,16 @@ function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
+
+      // Z — activate all pending ads from the launcher (works in any mode)
+      if (key === "z") {
+        e.preventDefault();
+        fetch("http://localhost:6969/api/activate", { method: "POST" })
+          .then(() => refreshPlaylist())
+          .catch(() => refreshPlaylist()); // still refresh even if launcher unreachable
+        return;
+      }
+
       if (key === "d") {
         e.preventDefault();
         SetDevMode(!devMode)
@@ -282,7 +292,7 @@ function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [devMode, navigate]);
+  }, [devMode, navigate, refreshPlaylist]);
 
   // ── Dev-mode countdown ticker ──────────────────────────────────────────────
   useEffect(() => {
