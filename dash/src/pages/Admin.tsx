@@ -4,6 +4,7 @@ import {
   clearToken,
   getToken,
   setToken,
+  NotFoundError,
   type AdminStats,
   type KioskAd,
   type UpdateStatus,
@@ -315,6 +316,12 @@ function StatsBar({
         <span className="adm-stat-label">Build</span>
         <span className="adm-stat-val">{stats.build}</span>
       </div>
+      {stats.updating && (
+        <div className="adm-stat">
+          <span className="adm-stat-label">Update</span>
+          <span className="adm-stat-val adm-stat-val--yellow">In progress</span>
+        </div>
+      )}
       <div className="adm-stat adm-stat--push adm-stat--controls">
         <div className="adm-nav-btns">
           <button
@@ -381,20 +388,31 @@ function UpdatePanel() {
       const s = await adminApi.updateStatus();
       setStatus(s);
       if (!ACTIVE_STAGES.includes(s.stage)) {
-        // Settled — stop polling
         setPolling(false);
         setBusy(false);
         clearInterval(pollRef.current);
         if (s.stage === "restarting") {
-          // Launcher is restarting — wait then reload the page
-          reloadRef.current = window.setTimeout(() => {
-            attemptReload(0);
-          }, 3000);
+          reloadRef.current = window.setTimeout(() => attemptReload(0), 3000);
         }
       }
     } catch {
       // Launcher may have briefly gone away during restart — keep polling
     }
+  }, []);
+
+  // On mount: fetch status once. If another admin already triggered an update,
+  // automatically start polling so this panel reflects the live progress.
+  useEffect(() => {
+    adminApi
+      .updateStatus()
+      .then((s) => {
+        setStatus(s);
+        if (ACTIVE_STAGES.includes(s.stage)) {
+          setBusy(true);
+          setPolling(true);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   function attemptReload(attempt: number) {
@@ -560,7 +578,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     try {
       await adminApi.deleteActive(id);
       showToast("Removed from live.");
-    } catch {
+    } catch (e) {
+      if (e instanceof NotFoundError)
+        showToast("Already removed by another admin.");
       await fetchAll();
     }
   }
@@ -582,7 +602,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     try {
       await adminApi.deleteApproved(id);
       showToast("Removed.");
-    } catch {
+    } catch (e) {
+      if (e instanceof NotFoundError)
+        showToast("Already removed by another admin.");
       await fetchAll();
     }
   }
@@ -591,8 +613,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     try {
       await adminApi.activateApproved(id);
       showToast("Pushed live.");
-      await fetchAll();
-    } catch {
+    } catch (e) {
+      if (e instanceof NotFoundError)
+        showToast("Already acted on by another admin.");
+    } finally {
       await fetchAll();
     }
   }
@@ -612,8 +636,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     try {
       await adminApi.approveSubmitted(id);
       showToast("Approved → ready queue.");
-      await fetchAll();
-    } catch {
+    } catch (e) {
+      if (e instanceof NotFoundError)
+        showToast("Already approved or removed by another admin.");
+    } finally {
       await fetchAll();
     }
   }
@@ -623,15 +649,27 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     try {
       await adminApi.deleteSubmitted(id);
       showToast("Rejected.");
-    } catch {
+    } catch (e) {
+      if (e instanceof NotFoundError)
+        showToast("Already removed by another admin.");
       await fetchAll();
     }
   }
 
   async function approveAllSubmitted() {
-    for (const ad of submitted)
-      await adminApi.approveSubmitted(ad.id).catch(() => {});
-    showToast("All approved → ready queue.");
+    let notFound = 0;
+    for (const ad of submitted) {
+      try {
+        await adminApi.approveSubmitted(ad.id);
+      } catch (e) {
+        if (e instanceof NotFoundError) notFound++;
+      }
+    }
+    if (notFound > 0)
+      showToast(
+        `All approved (${notFound} already acted on by another admin).`,
+      );
+    else showToast("All approved → ready queue.");
     await fetchAll();
   }
 

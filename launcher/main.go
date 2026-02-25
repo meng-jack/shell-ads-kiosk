@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/minio/selfupdate"
@@ -103,21 +104,19 @@ var (
 	kioskStartedAt time.Time
 	kioskRestarts  int
 
-	// pauses the kiosk monitor loop while an update is in flight
-	updateMu sync.RWMutex
-	updating bool
+	// updating is set to true while a bundle download/apply is in flight.
+	// Using atomic.Bool means the check-and-set is a single CPU instruction —
+	// no TOCTOU gap where two concurrent callers (two admins, or admin + auto-loop)
+	// can both slip past the "already in progress" guard.
+	updating atomic.Bool
 
-	// Three-stage ad pipeline:
-	//   submitted  — just received from dashboard, not yet reviewed
-	//   approvedAds — admin has approved, waiting for Z-key / reload to go live
-	//   forcedAds  — currently live, served to kiosk via /api/playlist
+	// Three-stage ad pipeline
 	playlistMu   sync.RWMutex
 	submittedAds []kioskAd
 	approvedAds  []kioskAd
 	forcedAds    []kioskAd
 
-	// navCmdCh carries "next" or "prev" commands from the admin dashboard to
-	// the kiosk. Buffered so the admin POST never blocks.
+	// navCmdCh carries "next" or "prev" commands from the admin dashboard.
 	navCmdCh = make(chan string, 8)
 )
 
@@ -196,6 +195,21 @@ func requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// cleanupTokens purges expired tokens every 15 minutes so the sync.Map
+// doesn't grow unboundedly when many admins log in over a long run.
+func cleanupTokens() {
+	for {
+		time.Sleep(15 * time.Minute)
+		now := time.Now()
+		adminTokens.Range(func(k, v any) bool {
+			if now.After(v.(tokenEntry).expiry) {
+				adminTokens.Delete(k)
+			}
+			return true
+		})
+	}
+}
+
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 func main() {
@@ -211,10 +225,14 @@ func main() {
 	// 1. Serve the embedded React dashboard — no Node/npm needed on the machine
 	go serveDash()
 
-	// 2. Launch the kiosk and restart it if it ever exits unexpectedly
+	// 2. Periodically purge expired admin tokens (prevents unbounded growth
+	//    when many admins log in and out over a long run).
+	go cleanupTokens()
+
+	// 3. Launch the kiosk and restart it if it ever exits unexpectedly
 	go monitorKiosk(filepath.Join(exeDir, kioskBin))
 
-	// 3. Periodically check GitHub for a newer build and apply it
+	// 4. Periodically check GitHub for a newer build and apply it
 	go updateLoop(exeDir)
 
 	// Block main goroutine forever
@@ -432,7 +450,8 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 			"approved":  nApproved,
 			"submitted": nSubmitted,
 		},
-		"build": BuildNumber,
+		"build":    BuildNumber,
+		"updating": updating.Load(),
 	})
 }
 
@@ -471,14 +490,23 @@ func handleAdminReorder(w http.ResponseWriter, r *http.Request) {
 func handleAdminDeleteActive(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	playlistMu.Lock()
+	found := false
 	n := forcedAds[:0:0]
 	for _, a := range forcedAds {
-		if a.ID != id {
+		if a.ID == id {
+			found = true
+		} else {
 			n = append(n, a)
 		}
 	}
-	forcedAds = n
+	if found {
+		forcedAds = n
+	}
 	playlistMu.Unlock()
+	if !found {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
 	log.Printf("Admin: removed active %q", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
@@ -487,14 +515,23 @@ func handleAdminDeleteActive(w http.ResponseWriter, r *http.Request) {
 func handleAdminDeleteSubmitted(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	playlistMu.Lock()
+	found := false
 	n := submittedAds[:0:0]
 	for _, a := range submittedAds {
-		if a.ID != id {
+		if a.ID == id {
+			found = true
+		} else {
 			n = append(n, a)
 		}
 	}
-	submittedAds = n
+	if found {
+		submittedAds = n
+	}
 	playlistMu.Unlock()
+	if !found {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
 	log.Printf("Admin: rejected submitted %q", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
@@ -503,14 +540,23 @@ func handleAdminDeleteSubmitted(w http.ResponseWriter, r *http.Request) {
 func handleAdminDeleteApproved(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	playlistMu.Lock()
+	found := false
 	n := approvedAds[:0:0]
 	for _, a := range approvedAds {
-		if a.ID != id {
+		if a.ID == id {
+			found = true
+		} else {
 			n = append(n, a)
 		}
 	}
-	approvedAds = n
+	if found {
+		approvedAds = n
+	}
 	playlistMu.Unlock()
+	if !found {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
 	log.Printf("Admin: removed approved %q", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
@@ -519,16 +565,24 @@ func handleAdminDeleteApproved(w http.ResponseWriter, r *http.Request) {
 func handleAdminApproveSubmitted(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	playlistMu.Lock()
+	found := false
 	remaining := submittedAds[:0:0]
 	for _, a := range submittedAds {
 		if a.ID == id {
 			approvedAds = append(approvedAds, a)
+			found = true
 		} else {
 			remaining = append(remaining, a)
 		}
 	}
-	submittedAds = remaining
+	if found {
+		submittedAds = remaining
+	}
 	playlistMu.Unlock()
+	if !found {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
 	log.Printf("Admin: approved submitted %q → approved queue", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
@@ -537,16 +591,24 @@ func handleAdminApproveSubmitted(w http.ResponseWriter, r *http.Request) {
 func handleAdminActivateApproved(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	playlistMu.Lock()
+	found := false
 	remaining := approvedAds[:0:0]
 	for _, a := range approvedAds {
 		if a.ID == id {
 			forcedAds = append(forcedAds, a)
+			found = true
 		} else {
 			remaining = append(remaining, a)
 		}
 	}
-	approvedAds = remaining
+	if found {
+		approvedAds = remaining
+	}
 	playlistMu.Unlock()
+	if !found {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
 	log.Printf("Admin: activated approved %q → live", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
@@ -620,10 +682,7 @@ func handleAdminTriggerUpdate(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "reason": "dev build — updates disabled"})
 		return
 	}
-	updateMu.RLock()
-	busy := updating
-	updateMu.RUnlock()
-	if busy {
+	if updating.Load() {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "reason": "update already in progress"})
 		return
 	}
@@ -647,10 +706,7 @@ func handleAdminUpdateStatus(w http.ResponseWriter, r *http.Request) {
 func monitorKiosk(path string) {
 	for {
 		// Stand down while an update is replacing binaries
-		updateMu.RLock()
-		busy := updating
-		updateMu.RUnlock()
-		if busy {
+		if updating.Load() {
 			time.Sleep(time.Second)
 			continue
 		}
@@ -760,6 +816,15 @@ func fetchLatestRelease() (*ghRelease, error) {
 // ─── Check & apply update ────────────────────────────────────────────────────
 
 func checkAndApply(exeDir string) error {
+	// CompareAndSwap: atomically transitions false→true.
+	// If it returns false, another goroutine (another admin, or the auto-loop)
+	// already owns the update slot — bail out immediately.
+	if !updating.CompareAndSwap(false, true) {
+		setUpdateStage("error", "An update is already in progress.", "", "update already in progress")
+		return fmt.Errorf("update already in progress")
+	}
+	defer updating.Store(false)
+
 	setUpdateStage("checking", "Checking GitHub for a newer build…", "", "")
 
 	release, err := fetchLatestRelease()
@@ -807,14 +872,7 @@ func checkAndApply(exeDir string) error {
 }
 
 func applyUpdate(exeDir, downloadURL, latestTag string) error {
-	updateMu.Lock()
-	updating = true
-	updateMu.Unlock()
-	defer func() {
-		updateMu.Lock()
-		updating = false
-		updateMu.Unlock()
-	}()
+	// Note: the updating flag is already set by checkAndApply — do not touch it here.
 
 	// ── 1. Download bundle zip ───────────────────────────────────────────────
 	setUpdateStage("downloading", fmt.Sprintf("Downloading %s…", latestTag), latestTag, "")

@@ -10,6 +10,14 @@ export function clearToken(): void {
   sessionStorage.removeItem(TOKEN_KEY);
 }
 
+// Thrown when the server returns 404 — item was already acted on by another admin.
+export class NotFoundError extends Error {
+  constructor() {
+    super("not_found");
+    this.name = "NotFoundError";
+  }
+}
+
 async function req<T>(
   method: string,
   path: string,
@@ -28,6 +36,7 @@ async function req<T>(
     clearToken();
     throw new Error("unauthorized");
   }
+  if (res.status === 404) throw new NotFoundError();
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -52,6 +61,7 @@ export interface AdminStats {
   kiosk: { running: boolean; pid: number; uptimeSec: number; restarts: number };
   playlist: { active: number; approved: number; submitted: number };
   build: string;
+  updating: boolean;
 }
 
 export type UpdateStage =
