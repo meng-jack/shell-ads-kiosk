@@ -158,52 +158,67 @@ function App() {
     };
   }, []);
 
-  // ── Asset download helper (fire-and-forget) ────────────────────────────────
-  const downloadAssetsInBackground = useCallback((loadedAds: Ad[]) => {
-    const targets = loadedAds.filter(
-      (ad) => ad.src && (ad.type === "image" || ad.type === "video"),
-    );
+  // ── Asset download + playlist swap ────────────────────────────────────────
+  // Guard against concurrent refreshes (e.g. 60 s timer firing while a Z-key
+  // triggered refresh is still downloading).
+  const refreshingRef = useRef(false);
 
-    Promise.allSettled(
-      targets.map(async (ad) => {
-        try {
-          const local = await DownloadAsset(ad.id, ad.src!);
-          if (local) {
-            localSrcsRef.current[ad.id] = local;
-          }
-        } catch {
-          /* ignore individual download failures */
-        }
-      }),
-    ).then(() => {
-      // After all downloads attempted, purge stale cache entries.
-      CleanupAssets(loadedAds.map((a) => a.id)).catch(() => {});
-    });
-  }, []);
-
-  // ── Playlist refresh loop ──────────────────────────────────────────────────
   const refreshPlaylist = useCallback(async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
     try {
       const payload = await FetchPlaylist();
       const external =
         Array.isArray(payload) && payload.length ? normalizeAds(payload) : [];
+
+      if (external.length === 0) {
+        setAds(buildPlaylist([]));
+        setStatus("Startup Shell — standalone mode");
+        return;
+      }
+
+      // ── Download phase ───────────────────────────────────────────────────
+      // Keep the currently playing playlist unchanged while we pull every
+      // image and video asset to the local cache/ folder.  HTML URL ads need
+      // no download — they stream into a native iframe at play-time.
+      setStatus(`Downloading ${external.length} ad(s)…`);
+
+      await Promise.allSettled(
+        external
+          .filter(
+            (ad) => ad.src && (ad.type === "image" || ad.type === "video"),
+          )
+          .map(async (ad) => {
+            try {
+              const local = await DownloadAsset(ad.id, ad.src!);
+              if (local) localSrcsRef.current[ad.id] = local;
+            } catch {
+              /* individual download failure — will fall back to remote src */
+            }
+          }),
+      );
+
+      // ── Swap phase ───────────────────────────────────────────────────────
+      // All downloads finished (success or fail).  Now atomically swap the
+      // playlist so every slot starts with a cached local path already in
+      // localSrcsRef — no blank frames, no remote-URL race.
       const full = buildPlaylist(external);
       setAds(full);
       setActiveIndex(0);
-      if (external.length > 0) {
-        setStatus("Playing live playlist");
-        setLastRefresh(new Date());
-        downloadAssetsInBackground(external);
-      } else {
-        setStatus("Startup Shell — standalone mode");
-      }
+      setStatus("Playing live playlist");
+      setLastRefresh(new Date());
+
+      // Purge cache entries that are no longer in the playlist.
+      CleanupAssets(external.map((a) => a.id)).catch(() => {});
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[playlist] fetch failed:", msg);
       setStatus(`Fetch error: ${msg}`);
       setAds(buildPlaylist([]));
+    } finally {
+      refreshingRef.current = false;
     }
-  }, [downloadAssetsInBackground]);
+  }, []);
 
   useEffect(() => {
     refreshPlaylist();

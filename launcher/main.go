@@ -175,11 +175,11 @@ func handleSubmitAds(w http.ResponseWriter, r *http.Request) {
 		}
 		switch d.Type {
 		case "html":
-			ad.HTML = fmt.Sprintf(
-				`<iframe src="%s" style="position:fixed;inset:0;width:100%%;height:100%%;border:none;" allowfullscreen></iframe>`,
-				d.URL,
-			)
-		default:
+			// Use Src so the kiosk renders it as a native <iframe src="…">.
+			// Putting it in HTML would require DOMPurify to allow iframes, which
+			// it strips by default. The src path bypasses sanitization entirely.
+			ad.Src = d.URL
+		default: // image, video
 			ad.Src = d.URL
 		}
 		ads = append(ads, ad)

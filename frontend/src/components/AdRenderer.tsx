@@ -30,7 +30,7 @@ export default function AdRenderer({ ad, overrideSrc }: Props) {
         />
       );
     case "html":
-      return <HtmlAd html={ad.html} />;
+      return <HtmlAd html={ad.html} src={overrideSrc ?? ad.src} />;
     default:
       return <div className="placeholder">Unsupported creative</div>;
   }

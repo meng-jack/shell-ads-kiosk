@@ -109,11 +109,15 @@ func loadKioskConfig() kioskConfig {
 }
 
 func NewApp() *App {
-	cacheBase, err := os.UserCacheDir()
-	if err != nil || cacheBase == "" {
-		cacheBase = os.TempDir()
+	// Place the cache folder next to the running executable so it is easy to
+	// inspect and clear. Fall back to a system temp dir only if the exe path
+	// is unavailable (e.g. during `wails dev`).
+	var cacheDir string
+	if exe, err := os.Executable(); err == nil {
+		cacheDir = filepath.Join(filepath.Dir(exe), "cache")
+	} else {
+		cacheDir = filepath.Join(os.TempDir(), "kiosk-ads-cache")
 	}
-	cacheDir := filepath.Join(cacheBase, "kiosk-ads")
 	_ = os.MkdirAll(cacheDir, 0o755)
 
 	// Priority: PLAYLIST_URL env var → kiosk.json config file → empty (standalone)
@@ -228,11 +232,12 @@ func sanitizeRemotePlaylist(ads []Ad) []Ad {
 			continue
 		}
 
-		// Ensure required content exists for the type
+		// Ensure required content exists for the type.
+		// HTML ads can carry either raw markup (html field) or a URL (src field).
 		if (it.Type == AdTypeImage || it.Type == AdTypeVideo) && strings.TrimSpace(it.Src) == "" {
 			continue
 		}
-		if it.Type == AdTypeHTML && strings.TrimSpace(it.HTML) == "" {
+		if it.Type == AdTypeHTML && strings.TrimSpace(it.HTML) == "" && strings.TrimSpace(it.Src) == "" {
 			continue
 		}
 
