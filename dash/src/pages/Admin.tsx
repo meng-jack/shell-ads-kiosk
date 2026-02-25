@@ -519,13 +519,40 @@ function UpdatePanel() {
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
+function fmtDate(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function Dashboard({ onLogout }: { onLogout: () => void }) {
-  const [active, setActive] = useState<KioskAd[]>([]);
-  const [approved, setApproved] = useState<KioskAd[]>([]);
+  // ── Server snapshots (from poll) ──────────────────────────────────────────
+  const [serverActive, setServerActive] = useState<KioskAd[]>([]);
+  const [serverApproved, setServerApproved] = useState<KioskAd[]>([]);
   const [submitted, setSubmitted] = useState<KioskAd[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+
+  // ── Local queue draft ─────────────────────────────────────────────────────
+  const [holdingQueue, setHoldingQueue] = useState<KioskAd[]>([]);
+  const [selectionQueue, setSelectionQueue] = useState<KioskAd[]>([]);
+  const [dirty, setDirty] = useState(false);
+
+  // ── Checkbox selections ───────────────────────────────────────────────────
+  const [holdingSel, setHoldingSel] = useState<Set<string>>(new Set());
+  const [selectionSel, setSelectionSel] = useState<Set<string>>(new Set());
+
+  // ── Drag state (for reordering selection queue) ───────────────────────────
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+
+  // ── Misc ──────────────────────────────────────────────────────────────────
   const [toast, setToast] = useState<string | null>(null);
   const [preview, setPreview] = useState<KioskAd | null>(null);
   const toastTimer = useRef<number>();
@@ -536,111 +563,161 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     toastTimer.current = window.setTimeout(() => setToast(null), 2800);
   }, []);
 
-  const fetchAll = useCallback(async () => {
-    try {
-      const [s, st] = await Promise.all([adminApi.state(), adminApi.stats()]);
-      setActive(s.active);
-      setApproved(s.approved);
-      setSubmitted(s.submitted);
-      setStats(st);
-      setErr(null);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg === "unauthorized") onLogout();
-      else setErr(msg);
-    } finally {
-      setLoading(false);
-    }
-  }, [onLogout]);
+  // ── Fetch ─────────────────────────────────────────────────────────────────
+  const fetchAll = useCallback(
+    async (force = false) => {
+      try {
+        const [s, st] = await Promise.all([adminApi.state(), adminApi.stats()]);
+        setSubmitted(s.submitted);
+        setStats(st);
+        setServerActive(s.active);
+        setServerApproved(s.approved);
+        setErr(null);
+        // Only sync draft when not dirty (don't stomp user's working changes)
+        if (!dirty || force) {
+          setHoldingQueue(s.approved);
+          setSelectionQueue(s.active);
+          if (force) setDirty(false);
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === "unauthorized") onLogout();
+        else setErr(msg);
+      } finally {
+        setLoading(false);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [onLogout, dirty],
+  );
 
   useEffect(() => {
-    fetchAll();
-    const id = window.setInterval(fetchAll, 5000);
+    fetchAll(false);
+    const id = window.setInterval(() => fetchAll(false), 5000);
     return () => clearInterval(id);
   }, [fetchAll]);
 
-  // ── Active: reorder ────────────────────────────────────────────────────────
-  async function move(index: number, dir: -1 | 1) {
-    const next = [...active];
-    const swap = index + dir;
-    if (swap < 0 || swap >= next.length) return;
-    [next[index], next[swap]] = [next[swap], next[index]];
-    setActive(next);
-    try {
-      await adminApi.reorder(next.map((a) => a.id));
-    } catch {
-      await fetchAll();
-    }
+  // ── Queue actions ─────────────────────────────────────────────────────────
+  function moveToSelection(ids: Set<string>) {
+    if (ids.size === 0) return;
+    const toMove = holdingQueue.filter((a) => ids.has(a.id));
+    setHoldingQueue((h) => h.filter((a) => !ids.has(a.id)));
+    setSelectionQueue((s) => [...s, ...toMove]);
+    setHoldingSel(new Set());
+    setDirty(true);
   }
 
-  async function deleteActive(id: string) {
-    setActive((a) => a.filter((x) => x.id !== id));
+  function moveToHolding(ids: Set<string>) {
+    if (ids.size === 0) return;
+    const toMove = selectionQueue.filter((a) => ids.has(a.id));
+    setSelectionQueue((s) => s.filter((a) => !ids.has(a.id)));
+    setHoldingQueue((h) => [...h, ...toMove]);
+    setSelectionSel(new Set());
+    setDirty(true);
+  }
+
+  function moveOneToSelection(id: string) {
+    moveToSelection(new Set([id]));
+  }
+
+  function moveOneToHolding(id: string) {
+    moveToHolding(new Set([id]));
+  }
+
+  function moveSelectionUp(idx: number) {
+    if (idx === 0) return;
+    setSelectionQueue((s) => {
+      const n = [...s];
+      [n[idx - 1], n[idx]] = [n[idx], n[idx - 1]];
+      return n;
+    });
+    setDirty(true);
+  }
+
+  function moveSelectionDown(idx: number) {
+    setSelectionQueue((s) => {
+      if (idx >= s.length - 1) return s;
+      const n = [...s];
+      [n[idx], n[idx + 1]] = [n[idx + 1], n[idx]];
+      return n;
+    });
+    setDirty(true);
+  }
+
+  function moveAllToSelection() {
+    setSelectionQueue((s) => [...s, ...holdingQueue]);
+    setHoldingQueue([]);
+    setHoldingSel(new Set());
+    setDirty(true);
+  }
+
+  function moveAllToHolding() {
+    setHoldingQueue((h) => [...h, ...selectionQueue]);
+    setSelectionQueue([]);
+    setSelectionSel(new Set());
+    setDirty(true);
+  }
+
+  function discardChanges() {
+    setHoldingQueue(serverApproved);
+    setSelectionQueue(serverActive);
+    setHoldingSel(new Set());
+    setSelectionSel(new Set());
+    setDirty(false);
+  }
+
+  async function pushPlaylist() {
     try {
-      await adminApi.deleteActive(id);
-      showToast("Removed from live.");
+      await adminApi.setPlaylist(selectionQueue.map((a) => a.id));
+      showToast("Playlist pushed live.");
+      await fetchAll(true);
     } catch (e) {
-      if (e instanceof NotFoundError)
-        showToast("Already removed by another admin.");
-      await fetchAll();
+      showToast(e instanceof Error ? e.message : "Push failed.");
     }
   }
 
-  async function clearAll() {
-    if (!confirm("Remove all live ads?")) return;
-    setActive([]);
-    try {
-      const r = await adminApi.clearActive();
-      showToast(`Cleared ${r.cleared}.`);
-    } catch {
-      await fetchAll();
-    }
+  // ── Drag reorder ──────────────────────────────────────────────────────────
+  function handleDragStart(idx: number) {
+    setDragFrom(idx);
   }
 
-  // ── Approved ───────────────────────────────────────────────────────────────
-  async function deleteApproved(id: string) {
-    setApproved((a) => a.filter((x) => x.id !== id));
-    try {
-      await adminApi.deleteApproved(id);
-      showToast("Removed.");
-    } catch (e) {
-      if (e instanceof NotFoundError)
-        showToast("Already removed by another admin.");
-      await fetchAll();
-    }
+  function handleDragOver(e: React.DragEvent, idx: number) {
+    e.preventDefault();
+    setDragOver(idx);
   }
 
-  async function activateApproved(id: string) {
+  function handleDrop(idx: number) {
+    if (dragFrom === null || dragFrom === idx) {
+      setDragFrom(null);
+      setDragOver(null);
+      return;
+    }
+    setSelectionQueue((s) => {
+      const n = [...s];
+      const [item] = n.splice(dragFrom, 1);
+      n.splice(idx, 0, item);
+      return n;
+    });
+    setDragFrom(null);
+    setDragOver(null);
+    setDirty(true);
+  }
+
+  function handleDragEnd() {
+    setDragFrom(null);
+    setDragOver(null);
+  }
+
+  // ── Submitted actions ─────────────────────────────────────────────────────
+  async function approveSubmitted(id: string) {
     try {
-      await adminApi.activateApproved(id);
-      showToast("Pushed live.");
+      await adminApi.approveSubmitted(id);
+      showToast("Approved → holding queue.");
     } catch (e) {
       if (e instanceof NotFoundError)
         showToast("Already acted on by another admin.");
     } finally {
-      await fetchAll();
-    }
-  }
-
-  async function reloadAll() {
-    try {
-      const r = await adminApi.reload();
-      showToast(`${r.activated} ad(s) pushed live.`);
-      await fetchAll();
-    } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : "Error");
-    }
-  }
-
-  // ── Submitted ─────────────────────────────────────────────────────────────
-  async function approveSubmitted(id: string) {
-    try {
-      await adminApi.approveSubmitted(id);
-      showToast("Approved → ready queue.");
-    } catch (e) {
-      if (e instanceof NotFoundError)
-        showToast("Already approved or removed by another admin.");
-    } finally {
-      await fetchAll();
+      await fetchAll(false);
     }
   }
 
@@ -652,34 +729,67 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     } catch (e) {
       if (e instanceof NotFoundError)
         showToast("Already removed by another admin.");
-      await fetchAll();
+      await fetchAll(false);
     }
   }
 
   async function approveAllSubmitted() {
-    let notFound = 0;
+    let nf = 0;
     for (const ad of submitted) {
       try {
         await adminApi.approveSubmitted(ad.id);
       } catch (e) {
-        if (e instanceof NotFoundError) notFound++;
+        if (e instanceof NotFoundError) nf++;
       }
     }
-    if (notFound > 0)
-      showToast(
-        `All approved (${notFound} already acted on by another admin).`,
-      );
-    else showToast("All approved → ready queue.");
-    await fetchAll();
+    showToast(
+      nf
+        ? `All approved (${nf} already handled).`
+        : "All approved → holding queue.",
+    );
+    await fetchAll(false);
   }
 
-  // ── Kiosk ──────────────────────────────────────────────────────────────────
+  // ── Holding: permanent delete ─────────────────────────────────────────────
+  async function deleteFromHolding(id: string) {
+    setHoldingQueue((h) => h.filter((a) => a.id !== id));
+    setHoldingSel((s) => {
+      s.delete(id);
+      return new Set(s);
+    });
+    try {
+      await adminApi.deleteApproved(id);
+      showToast("Permanently removed.");
+    } catch (e) {
+      if (e instanceof NotFoundError)
+        showToast("Already removed by another admin.");
+      await fetchAll(false);
+    }
+  }
+
+  async function deleteSelectedFromHolding() {
+    if (!holdingSel.size) return;
+    const ids = [...holdingSel];
+    setHoldingQueue((h) => h.filter((a) => !holdingSel.has(a.id)));
+    setHoldingSel(new Set());
+    for (const id of ids) {
+      try {
+        await adminApi.deleteApproved(id);
+      } catch {
+        /* ignore individual errors */
+      }
+    }
+    showToast(`Removed ${ids.length}.`);
+    await fetchAll(false);
+  }
+
+  // ── Kiosk ─────────────────────────────────────────────────────────────────
   async function restartKiosk() {
     if (!confirm("Restart the kiosk process?")) return;
     try {
       await adminApi.restartKiosk();
       showToast("Kiosk restarting…");
-    } catch (e: unknown) {
+    } catch (e) {
       showToast(e instanceof Error ? e.message : "Error");
     }
   }
@@ -710,6 +820,22 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     onLogout();
   }
 
+  // ── Checkbox helpers ──────────────────────────────────────────────────────
+  function toggleHolding(id: string) {
+    setHoldingSel((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+  function toggleSelection(id: string) {
+    setSelectionSel((s) => {
+      const n = new Set(s);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
   if (loading) return <div className="adm-loading">Loading…</div>;
 
   return (
@@ -727,24 +853,21 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       </div>
 
-      {/* Stats */}
       <StatsBar
         stats={stats}
         onRestart={restartKiosk}
         onNext={kioskNext}
         onPrev={kioskPrev}
       />
-
-      {/* Update */}
       <UpdatePanel />
 
       {err && (
         <div className="adm-err-banner">
-          {err} <button onClick={fetchAll}>Retry</button>
+          {err} <button onClick={() => fetchAll(false)}>Retry</button>
         </div>
       )}
 
-      {/* ── Section 1: Submitted (needs review) ─────────────────────────── */}
+      {/* ── Submitted ───────────────────────────────────────────────────── */}
       <section className="adm-section">
         <div className="adm-section-header">
           <span className="adm-section-title">Submitted</span>
@@ -764,14 +887,67 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         ) : (
           <div className="adm-list">
             {submitted.map((ad) => (
-              <AdRow
-                key={ad.id}
-                ad={ad}
-                stage="submitted"
-                onPreview={() => setPreview(ad)}
-                onApprove={() => approveSubmitted(ad.id)}
-                onDelete={() => deleteSubmitted(ad.id)}
-              />
+              <div key={ad.id} className="adm-row">
+                <span className="adm-row-num adm-row-num--submitted">•</span>
+                <div className="adm-row-info">
+                  <span className="adm-row-name">{ad.name}</span>
+                  <span className="adm-row-meta">
+                    <span className={`adm-type adm-type--${ad.type}`}>
+                      {ad.type}
+                    </span>
+                    <span className="adm-row-dur">
+                      {(ad.durationMs / 1000).toFixed(0)}s
+                    </span>
+                    {ad.src && (
+                      <span className="adm-row-url" title={ad.src}>
+                        {truncate(ad.src, 32)}
+                      </span>
+                    )}
+                  </span>
+                  {(ad.submitterName || ad.submitterEmail) && (
+                    <span className="adm-row-submitter">
+                      {ad.submitterName && (
+                        <span className="adm-submitter-name">
+                          {ad.submitterName}
+                        </span>
+                      )}
+                      {ad.submitterEmail && (
+                        <span className="adm-submitter-email">
+                          {ad.submitterEmail}
+                        </span>
+                      )}
+                      {ad.submittedAt && (
+                        <span className="adm-submitter-time">
+                          {fmtDate(ad.submittedAt)}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
+                <div className="adm-row-actions">
+                  <button
+                    className="adm-icon-btn adm-icon-btn--preview"
+                    onClick={() => setPreview(ad)}
+                    title="Preview"
+                  >
+                    ⊙
+                  </button>
+                  <button
+                    className="adm-icon-btn adm-icon-btn--approve"
+                    onClick={() => approveSubmitted(ad.id)}
+                    title="Approve → Holding"
+                  >
+                    ✓
+                  </button>
+                  <button
+                    className="adm-icon-btn adm-icon-btn--del"
+                    onClick={() => deleteSubmitted(ad.id)}
+                    title="Reject"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
         )}
@@ -779,79 +955,258 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
       <div className="adm-rule" />
 
-      {/* ── Section 2: Approved (ready to go live) ──────────────────────── */}
-      <section className="adm-section">
-        <div className="adm-section-header">
-          <span className="adm-section-title">Approved</span>
-          <span className="adm-section-sub">
-            Ready — push live via Reload or Z key
-          </span>
-          <span className="adm-count">{approved.length}</span>
-          {approved.length > 0 && (
-            <button className="adm-btn adm-btn--sm" onClick={reloadAll}>
-              Push all live
-            </button>
+      {/* ── Queue management ────────────────────────────────────────────── */}
+      <div className="adm-queue-header">
+        <div className="adm-queue-title-row">
+          <span className="adm-section-title">Queue Management</span>
+          {dirty && <span className="adm-dirty-badge">Unsaved changes</span>}
+        </div>
+        <div className="adm-queue-actions">
+          <button
+            className="adm-btn adm-btn--ghost adm-btn--sm"
+            onClick={discardChanges}
+            disabled={!dirty}
+          >
+            Discard
+          </button>
+          <button
+            className="adm-btn adm-btn--sm adm-btn--push"
+            onClick={pushPlaylist}
+            disabled={!dirty}
+          >
+            Push to kiosk
+          </button>
+        </div>
+      </div>
+
+      <div className="adm-queues">
+        {/* ── Holding Queue ──────────────────────────────────────────── */}
+        <div className="adm-queue">
+          <div className="adm-queue-head">
+            <span className="adm-queue-label">Holding Queue</span>
+            <span className="adm-count">{holdingQueue.length}</span>
+            {holdingSel.size > 0 && (
+              <div className="adm-queue-bulk">
+                <button
+                  className="adm-btn adm-btn--ghost adm-btn--xs"
+                  onClick={() => moveToSelection(holdingSel)}
+                >
+                  → Selection ({holdingSel.size})
+                </button>
+                <button
+                  className="adm-btn adm-btn--xs adm-btn--danger"
+                  onClick={deleteSelectedFromHolding}
+                >
+                  Delete ({holdingSel.size})
+                </button>
+              </div>
+            )}
+            {holdingQueue.length > 0 && holdingSel.size === 0 && (
+              <button
+                className="adm-btn adm-btn--ghost adm-btn--xs"
+                onClick={moveAllToSelection}
+                title="Move all to selection"
+              >
+                All →
+              </button>
+            )}
+          </div>
+
+          {holdingQueue.length === 0 ? (
+            <p className="adm-queue-empty">
+              No approved ads in holding.
+              <br />
+              Approve submissions above.
+            </p>
+          ) : (
+            <div className="adm-list">
+              {holdingQueue.map((ad) => (
+                <div
+                  key={ad.id}
+                  className={`adm-row adm-row--holding${holdingSel.has(ad.id) ? " adm-row--selected" : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="adm-checkbox"
+                    checked={holdingSel.has(ad.id)}
+                    onChange={() => toggleHolding(ad.id)}
+                  />
+                  <div className="adm-row-info">
+                    <span className="adm-row-name">{ad.name}</span>
+                    <span className="adm-row-meta">
+                      <span className={`adm-type adm-type--${ad.type}`}>
+                        {ad.type}
+                      </span>
+                      <span className="adm-row-dur">
+                        {(ad.durationMs / 1000).toFixed(0)}s
+                      </span>
+                    </span>
+                    {(ad.submitterName || ad.submitterEmail) && (
+                      <span className="adm-row-submitter">
+                        {ad.submitterName && (
+                          <span className="adm-submitter-name">
+                            {ad.submitterName}
+                          </span>
+                        )}
+                        {ad.submitterEmail && (
+                          <span className="adm-submitter-email">
+                            {ad.submitterEmail}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                  <div className="adm-row-actions">
+                    <button
+                      className="adm-icon-btn adm-icon-btn--preview"
+                      onClick={() => setPreview(ad)}
+                      title="Preview"
+                    >
+                      ⊙
+                    </button>
+                    <button
+                      className="adm-icon-btn adm-icon-btn--move"
+                      onClick={() => moveOneToSelection(ad.id)}
+                      title="Move to selection queue"
+                    >
+                      →
+                    </button>
+                    <button
+                      className="adm-icon-btn adm-icon-btn--del"
+                      onClick={() => deleteFromHolding(ad.id)}
+                      title="Permanently delete"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
-        {approved.length === 0 ? (
-          <p className="adm-empty">
-            No approved ads. Approve items from Submitted above.
-          </p>
-        ) : (
-          <div className="adm-list">
-            {approved.map((ad) => (
-              <AdRow
-                key={ad.id}
-                ad={ad}
-                stage="approved"
-                onPreview={() => setPreview(ad)}
-                onActivate={() => activateApproved(ad.id)}
-                onDelete={() => deleteApproved(ad.id)}
-              />
-            ))}
+
+        {/* ── Center controls ────────────────────────────────────────── */}
+        <div className="adm-queue-center">
+          <button
+            className="adm-icon-btn adm-queue-center-btn"
+            onClick={moveAllToSelection}
+            title="Move all to selection"
+            disabled={holdingQueue.length === 0}
+          >
+            »
+          </button>
+          <button
+            className="adm-icon-btn adm-queue-center-btn"
+            onClick={moveAllToHolding}
+            title="Move all back to holding"
+            disabled={selectionQueue.length === 0}
+          >
+            «
+          </button>
+        </div>
+
+        {/* ── Selection Queue ────────────────────────────────────────── */}
+        <div className="adm-queue">
+          <div className="adm-queue-head">
+            <span className="adm-queue-label">Selection Queue</span>
+            <span className="adm-count">{selectionQueue.length}</span>
+            <span className="adm-queue-sublabel">drag or ↑↓ to reorder</span>
+            {selectionSel.size > 0 && (
+              <button
+                className="adm-btn adm-btn--ghost adm-btn--xs"
+                onClick={() => moveToHolding(selectionSel)}
+              >
+                ← Holding ({selectionSel.size})
+              </button>
+            )}
+            {selectionQueue.length > 0 && selectionSel.size === 0 && (
+              <button
+                className="adm-btn adm-btn--ghost adm-btn--xs"
+                onClick={moveAllToHolding}
+                title="Move all back to holding"
+              >
+                ← All
+              </button>
+            )}
           </div>
-        )}
-      </section>
 
-      <div className="adm-rule" />
-
-      {/* ── Section 3: Live playlist ─────────────────────────────────────── */}
-      <section className="adm-section">
-        <div className="adm-section-header">
-          <span className="adm-section-title">Live Playlist</span>
-          <span className="adm-section-sub">Currently shown on kiosk</span>
-          <span className="adm-count">{active.length}</span>
-          {active.length > 0 && (
-            <button
-              className="adm-btn adm-btn--ghost adm-btn--sm adm-btn--danger"
-              onClick={clearAll}
-            >
-              Clear all
-            </button>
+          {selectionQueue.length === 0 ? (
+            <p className="adm-queue-empty">
+              No ads selected.
+              <br />
+              Move items here from Holding.
+            </p>
+          ) : (
+            <div className="adm-list">
+              {selectionQueue.map((ad, i) => (
+                <div
+                  key={ad.id}
+                  className={`adm-row adm-row--selection${dragOver === i ? " adm-row--dragover" : ""}${dragFrom === i ? " adm-row--dragging" : ""}${selectionSel.has(ad.id) ? " adm-row--selected" : ""}`}
+                  draggable
+                  onDragStart={() => handleDragStart(i)}
+                  onDragOver={(e) => handleDragOver(e, i)}
+                  onDrop={() => handleDrop(i)}
+                  onDragEnd={handleDragEnd}
+                >
+                  <span className="adm-drag-handle" title="Drag to reorder">
+                    ⋮⋮
+                  </span>
+                  <span className="adm-row-num">{i + 1}</span>
+                  <input
+                    type="checkbox"
+                    className="adm-checkbox"
+                    checked={selectionSel.has(ad.id)}
+                    onChange={() => toggleSelection(ad.id)}
+                  />
+                  <div className="adm-row-info">
+                    <span className="adm-row-name">{ad.name}</span>
+                    <span className="adm-row-meta">
+                      <span className={`adm-type adm-type--${ad.type}`}>
+                        {ad.type}
+                      </span>
+                      <span className="adm-row-dur">
+                        {(ad.durationMs / 1000).toFixed(0)}s
+                      </span>
+                    </span>
+                  </div>
+                  <div className="adm-row-actions">
+                    <button
+                      className="adm-icon-btn adm-icon-btn--preview"
+                      onClick={() => setPreview(ad)}
+                      title="Preview"
+                    >
+                      ⊙
+                    </button>
+                    <button
+                      className="adm-icon-btn"
+                      onClick={() => moveSelectionUp(i)}
+                      disabled={i === 0}
+                      title="Move up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      className="adm-icon-btn"
+                      onClick={() => moveSelectionDown(i)}
+                      disabled={i === selectionQueue.length - 1}
+                      title="Move down"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      className="adm-icon-btn adm-icon-btn--move"
+                      onClick={() => moveOneToHolding(ad.id)}
+                      title="Return to holding"
+                    >
+                      ←
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
-        {active.length === 0 ? (
-          <p className="adm-empty">
-            Nothing live. Approve and push ads from the sections above.
-          </p>
-        ) : (
-          <div className="adm-list">
-            {active.map((ad, i) => (
-              <AdRow
-                key={ad.id}
-                ad={ad}
-                index={i}
-                total={active.length}
-                stage="active"
-                onPreview={() => setPreview(ad)}
-                onMoveUp={() => move(i, -1)}
-                onMoveDown={() => move(i, 1)}
-                onDelete={() => deleteActive(ad.id)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      </div>
 
       {preview && <Preview ad={preview} onClose={() => setPreview(null)} />}
       {toast && <div className="adm-toast">{toast}</div>}

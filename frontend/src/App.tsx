@@ -265,6 +265,103 @@ function App() {
     };
   }, [ads, activeIndex]);
 
+  // ── Report shown ads to the launcher ──────────────────────────────────────
+  // When an ad becomes active the launcher marks it so the submitter can see
+  // "Shown on screen" in their dashboard. Only fires for real submitted ads.
+  useEffect(() => {
+    if (!ads.length) return;
+    const ad = ads[activeIndex];
+    if (!ad?.id) return;
+    fetch("http://localhost:6969/api/kiosk/report-shown", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: ad.id }),
+    }).catch(() => {}); // silent — launcher may not be running
+  }, [ads, activeIndex]);
+
+  // ── Report current ad to launcher ─────────────────────────────────────────
+  // Notify launcher which ad is currently playing for admin preview metadata
+  useEffect(() => {
+    if (!ads.length) return;
+    const ad = ads[activeIndex];
+    fetch("http://localhost:6969/api/kiosk/current-ad", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: ad?.id || "" }),
+    }).catch(() => {});
+  }, [ads, activeIndex]);
+
+  // ── Screenshot capture for admin preview ──────────────────────────────────
+  // Capture a screenshot every 3 seconds and send to launcher for admin dashboard
+  useEffect(() => {
+    const captureScreenshot = async () => {
+      try {
+        const canvas = document.createElement("canvas");
+        const viewport = document.querySelector(".ad-viewport") as HTMLElement;
+        if (!viewport) return;
+
+        // Use html2canvas-like approach or native screenshot API if available
+        // For now, use a simpler approach: capture the viewport as canvas
+        const rect = viewport.getBoundingClientRect();
+        canvas.width = Math.min(rect.width, 1920);
+        canvas.height = Math.min(rect.height, 1080);
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        // Draw a simple representation - in production, use proper screenshot library
+        // For video/image ads, we can capture the actual element
+        const adElement = viewport.querySelector("img, video") as
+          | HTMLImageElement
+          | HTMLVideoElement;
+        if (adElement) {
+          try {
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (adElement instanceof HTMLImageElement && adElement.complete) {
+              ctx.drawImage(adElement, 0, 0, canvas.width, canvas.height);
+            } else if (
+              adElement instanceof HTMLVideoElement &&
+              adElement.readyState >= 2
+            ) {
+              ctx.drawImage(adElement, 0, 0, canvas.width, canvas.height);
+            }
+
+            // Convert to JPEG blob
+            canvas.toBlob(
+              async (blob) => {
+                if (!blob) return;
+                try {
+                  await fetch("http://localhost:6969/api/kiosk/screenshot", {
+                    method: "POST",
+                    headers: { "Content-Type": "image/jpeg" },
+                    body: blob,
+                  });
+                } catch (e) {
+                  // Silent fail - launcher may not be available
+                }
+              },
+              "image/jpeg",
+              0.85,
+            );
+          } catch (e) {
+            // CORS or security error - skip this capture
+          }
+        }
+      } catch (e) {
+        // Silent fail
+      }
+    };
+
+    // Capture screenshot every 3 seconds
+    const interval = setInterval(captureScreenshot, 3000);
+    // Initial capture after 1 second
+    setTimeout(captureScreenshot, 1000);
+
+    return () => clearInterval(interval);
+  }, [ads, activeIndex]);
+
   // ── Dev-mode keyboard navigation (← prev, → next, D: toggle dev mode) ──────
   // Immediately cancels the running timers and jumps to the adjacent ad with a
   // short exit flash so the transition still plays.

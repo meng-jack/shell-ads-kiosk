@@ -21,7 +21,7 @@
 }
 
 .adm-wrap {
-    max-width: 820px;
+    max-width: 1100px;
     margin: 0 auto;
     padding: 40px 24px 80px;
     display: flex;
@@ -618,13 +618,203 @@
     animation: toast-in 0.2s ease;
 }
 
-@keyframes toast-in {
-    from {
-        opacity: 0;
-        transform: translateX(-50%) translateY(8px);
+/* ── Queue management ────────────────────────────────────────────────────── */
+.adm-queue-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.adm-queue-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.adm-queue-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.adm-dirty-badge {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: rgba(253, 224, 71, 0.9);
+    border: 1px solid rgba(253, 224, 71, 0.35);
+    padding: 2px 7px;
+    border-radius: 3px;
+}
+
+.adm-btn--push {
+    background: var(--cream);
+    color: var(--red);
+    border: none;
+}
+.adm-btn--push:hover:not(:disabled) {
+    opacity: 0.88;
+}
+.adm-btn--push:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.adm-btn--xs {
+    padding: 3px 8px;
+    font-size: 10px;
+    border-radius: 3px;
+}
+
+/* ── Two-column queues ───────────────────────────────────────────────────── */
+.adm-queues {
+    display: grid;
+    grid-template-columns: 1fr 32px 1fr;
+    gap: 0 8px;
+    align-items: start;
+}
+
+.adm-queue {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.adm-queue-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.adm-queue-label {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    opacity: 0.5;
+}
+
+.adm-queue-sublabel {
+    font-size: 10px;
+    font-weight: 600;
+    opacity: 0.3;
+    flex: 1;
+}
+
+.adm-queue-bulk {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.adm-queue-empty {
+    font-size: 12px;
+    opacity: 0.3;
+    font-weight: 600;
+    padding: 16px 0;
+    line-height: 1.6;
+}
+
+/* ── Center column buttons ───────────────────────────────────────────────── */
+.adm-queue-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding-top: 32px;
+}
+
+.adm-queue-center-btn {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+}
+
+/* ── Checkbox ────────────────────────────────────────────────────────────── */
+.adm-checkbox {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    accent-color: var(--cream);
+    cursor: pointer;
+}
+
+/* ── Drag handle ─────────────────────────────────────────────────────────── */
+.adm-drag-handle {
+    font-size: 12px;
+    opacity: 0.25;
+    cursor: grab;
+    flex-shrink: 0;
+    user-select: none;
+    letter-spacing: -2px;
+    padding: 0 2px;
+}
+.adm-drag-handle:active {
+    cursor: grabbing;
+}
+
+/* ── Row variants ────────────────────────────────────────────────────────── */
+.adm-row--selected {
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.adm-row--dragging {
+    opacity: 0.4;
+}
+
+.adm-row--dragover {
+    border-top: 2px solid var(--cream);
+}
+
+/* ── Submitter info ──────────────────────────────────────────────────────── */
+.adm-row-submitter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+
+.adm-submitter-name {
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 0.65;
+}
+
+.adm-submitter-email {
+    font-size: 10px;
+    font-weight: 600;
+    font-family: ui-monospace, monospace;
+    opacity: 0.4;
+}
+
+.adm-submitter-time {
+    font-size: 10px;
+    font-weight: 600;
+    opacity: 0.3;
+}
+
+/* ── Move button ─────────────────────────────────────────────────────────── */
+.adm-icon-btn--move:hover:not(:disabled) {
+    background: rgba(251, 191, 36, 0.15);
+    border-color: rgba(251, 191, 36, 0.5);
+    color: #fcd34d;
+    opacity: 1;
+}
+
+/* ── Responsive: stack queues on narrow screens ──────────────────────────── */
+@media (max-width: 600px) {
+    .adm-queues {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
     }
-    to {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0);
+    .adm-queue-center {
+        flex-direction: row;
+        justify-content: center;
+        padding-top: 0;
     }
 }

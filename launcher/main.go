@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,6 +30,9 @@ import (
 //
 //go:embed all:static
 var staticFiles embed.FS
+
+//go:embed admin_template.html
+var adminTemplateHTML []byte
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -92,6 +96,39 @@ type dashAd struct {
 	DurationSec int    `json:"durationSec"`
 }
 
+// ─── Google auth ──────────────────────────────────────────────────────────────
+
+const googleClientID = "753871561934-ruse0p8a2k763umnkuj9slq9tlemim9o.apps.googleusercontent.com"
+
+type googleTokenInfo struct {
+	Sub     string `json:"sub"`
+	Email   string `json:"email"`
+	Name    string `json:"name"`
+	Picture string `json:"picture"`
+	Aud     string `json:"aud"`
+	Exp     string `json:"exp"`
+}
+
+type cachedToken struct {
+	info   *googleTokenInfo
+	expiry time.Time
+}
+
+var tokenCache sync.Map // string → *cachedToken
+
+// submissionRecord tracks every submitted ad across its full lifecycle so the
+// submitter can see status updates on the dashboard.
+type submissionRecord struct {
+	Ad           kioskAd   `json:"ad"`
+	OwnerSub     string    `json:"ownerSub"`
+	OwnerEmail   string    `json:"ownerEmail"`
+	OwnerName    string    `json:"ownerName"`
+	Stage        string    `json:"stage"` // submitted|approved|active|removed
+	ShownOnKiosk bool      `json:"shownOnKiosk"`
+	SubmittedAt  time.Time `json:"submittedAt"`
+	ApprovedAt   time.Time `json:"approvedAt,omitempty"`
+}
+
 // ─── Global state ─────────────────────────────────────────────────────────────
 
 var (
@@ -116,8 +153,21 @@ var (
 	approvedAds  []kioskAd
 	forcedAds    []kioskAd
 
+	// submissions tracks the full lifecycle of every ad submitted through the
+	// dashboard. Protected by playlistMu (same lock as the three stage slices).
+	submissions = map[string]*submissionRecord{}
+
 	// navCmdCh carries "next" or "prev" commands from the admin dashboard.
 	navCmdCh = make(chan string, 8)
+
+	// currentKioskAd tracks what ad is currently being displayed on the kiosk
+	currentKioskAdMu sync.RWMutex
+	currentKioskAd   *kioskAd
+
+	// kioskScreenshot stores the latest screenshot from the kiosk (JPEG bytes)
+	kioskScreenshotMu   sync.RWMutex
+	kioskScreenshotData []byte
+	kioskScreenshotTime time.Time
 )
 
 // ─── Admin auth ───────────────────────────────────────────────────────────────
@@ -195,8 +245,8 @@ func requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// cleanupTokens purges expired tokens every 15 minutes so the sync.Map
-// doesn't grow unboundedly when many admins log in over a long run.
+// cleanupTokens purges expired tokens every 15 minutes so the sync.Maps
+// don't grow unboundedly when many admins/users log in over a long run.
 func cleanupTokens() {
 	for {
 		time.Sleep(15 * time.Minute)
@@ -207,6 +257,59 @@ func cleanupTokens() {
 			}
 			return true
 		})
+		tokenCache.Range(func(k, v any) bool {
+			if now.After(v.(*cachedToken).expiry) {
+				tokenCache.Delete(k)
+			}
+			return true
+		})
+	}
+}
+
+// verifyGoogleToken validates an ID token via Google's tokeninfo endpoint and
+// caches the result until the token's own expiry so polls don't hammer Google.
+func verifyGoogleToken(token string) (*googleTokenInfo, error) {
+	if token == "" {
+		return nil, fmt.Errorf("missing token")
+	}
+	if v, ok := tokenCache.Load(token); ok {
+		ct := v.(*cachedToken)
+		if time.Now().Before(ct.expiry) {
+			return ct.info, nil
+		}
+		tokenCache.Delete(token)
+	}
+	resp, err := httpClient.Get("https://oauth2.googleapis.com/tokeninfo?id_token=" + token)
+	if err != nil {
+		return nil, fmt.Errorf("tokeninfo request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("tokeninfo: HTTP %d", resp.StatusCode)
+	}
+	var info googleTokenInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, fmt.Errorf("tokeninfo decode: %w", err)
+	}
+	if info.Aud != googleClientID {
+		return nil, fmt.Errorf("token audience mismatch")
+	}
+	if info.Sub == "" {
+		return nil, fmt.Errorf("empty sub in token")
+	}
+	expiry := time.Now().Add(5 * time.Minute)
+	if expSec, err2 := strconv.ParseInt(info.Exp, 10, 64); err2 == nil {
+		expiry = time.Unix(expSec, 0)
+	}
+	tokenCache.Store(token, &cachedToken{info: &info, expiry: expiry})
+	return &info, nil
+}
+
+// updateSubmissionStage marks a submission record's stage in-place.
+// Must be called while playlistMu is held (write lock).
+func updateSubmissionStage(id, stage string) {
+	if rec, ok := submissions[id]; ok {
+		rec.Stage = stage
 	}
 }
 
@@ -243,9 +346,19 @@ func main() {
 
 // spaHandler wraps a file server so any path that doesn't match a real file
 // falls back to index.html — required for React Router client-side routing.
+// SECURITY: The /admin path is completely blocked from the SPA to prevent
+// reverse engineering. Admin functionality must be accessed only after proper
+// authentication and should not be included in the client-side bundle.
 func spaHandler(fsys fs.FS) http.Handler {
 	fileServer := http.FileServer(http.FS(fsys))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// SECURITY: Block /admin/* entirely from static file serving.
+		// The admin dashboard should be served separately or via API only.
+		if strings.HasPrefix(r.URL.Path, "/admin") {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
 		name := strings.TrimPrefix(r.URL.Path, "/")
 		if name == "" {
 			name = "index.html"
@@ -256,6 +369,7 @@ func spaHandler(fsys fs.FS) http.Handler {
 			return
 		}
 		// Unknown path → serve index.html so React Router handles it
+		// (but admin paths are already blocked above)
 		http.ServeFileFS(w, r, fsys, "index.html")
 	})
 }
@@ -272,7 +386,14 @@ func serveDash() {
 	mux.HandleFunc("POST /api/submit-ads", handleSubmitAds)
 	mux.HandleFunc("POST /api/activate", handleActivate)
 	mux.HandleFunc("GET /api/playlist", handlePlaylist)
-	mux.HandleFunc("GET /api/kiosk/nav-poll", handleNavPoll) // kiosk long-polls this
+	mux.HandleFunc("GET /api/kiosk/nav-poll", handleNavPoll)
+	mux.HandleFunc("POST /api/kiosk/report-shown", handleReportShown)
+	mux.HandleFunc("POST /api/kiosk/screenshot", handleKioskScreenshot)
+	mux.HandleFunc("POST /api/kiosk/current-ad", handleKioskCurrentAd)
+
+	// ── User API (Google token required) ─────────────────────────────────────
+	mux.HandleFunc("GET /api/my-ads", handleGetMyAds)
+	mux.HandleFunc("DELETE /api/my-ads/{id}", handleRetractAd)
 
 	// ── Admin auth ────────────────────────────────────────────────────────────
 	mux.HandleFunc("POST /api/admin/auth", handleAdminAuth)
@@ -280,6 +401,7 @@ func serveDash() {
 	// ── Admin protected ───────────────────────────────────────────────────────
 	mux.HandleFunc("GET /api/admin/state", requireAdmin(handleAdminState))
 	mux.HandleFunc("GET /api/admin/stats", requireAdmin(handleAdminStats))
+	mux.HandleFunc("GET /api/admin/screenshot", requireAdmin(handleAdminScreenshot))
 	mux.HandleFunc("PUT /api/admin/reorder", requireAdmin(handleAdminReorder))
 	mux.HandleFunc("DELETE /api/admin/active/{id}", requireAdmin(handleAdminDeleteActive))
 	mux.HandleFunc("DELETE /api/admin/submitted/{id}", requireAdmin(handleAdminDeleteSubmitted))
@@ -288,12 +410,17 @@ func serveDash() {
 	mux.HandleFunc("POST /api/admin/approved/{id}/activate", requireAdmin(handleAdminActivateApproved))
 	mux.HandleFunc("POST /api/admin/clear", requireAdmin(handleAdminClearActive))
 	mux.HandleFunc("POST /api/admin/reload", requireAdmin(handleAdminReload))
+	mux.HandleFunc("PUT /api/admin/playlist", requireAdmin(handleAdminSetPlaylist))
 	mux.HandleFunc("POST /api/admin/restart-kiosk", requireAdmin(handleAdminRestartKiosk))
 	mux.HandleFunc("POST /api/admin/kiosk/next", requireAdmin(handleAdminKioskNext))
 	mux.HandleFunc("POST /api/admin/kiosk/prev", requireAdmin(handleAdminKioskPrev))
 	mux.HandleFunc("POST /api/admin/trigger-update", requireAdmin(handleAdminTriggerUpdate))
 	mux.HandleFunc("GET /api/admin/update-status", requireAdmin(handleAdminUpdateStatus))
 	mux.HandleFunc("DELETE /api/admin/logout", requireAdmin(handleAdminLogout))
+
+	// ── Admin page (server-side rendered, no client bundle exposure) ──────────
+	mux.HandleFunc("GET /admin", handleAdminPage)
+	mux.HandleFunc("GET /admin/", handleAdminPage)
 
 	// ── SPA fallback ──────────────────────────────────────────────────────────
 	mux.Handle("/", spaHandler(sub))
@@ -306,13 +433,21 @@ func serveDash() {
 
 // handleSubmitAds queues incoming ads as "submitted" — not visible to the kiosk
 // until an admin approves them AND either the Z key is pressed or reload is called.
+// Requires a valid Google ID token in the X-Google-Token header.
 func handleSubmitAds(w http.ResponseWriter, r *http.Request) {
+	userInfo, err := verifyGoogleToken(r.Header.Get("X-Google-Token"))
+	if err != nil {
+		http.Error(w, `{"error":"unauthenticated"}`, http.StatusUnauthorized)
+		return
+	}
+
 	var incoming []dashAd
 	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
 		http.Error(w, "bad JSON", http.StatusBadRequest)
 		return
 	}
 
+	now := time.Now()
 	ads := make([]kioskAd, 0, len(incoming))
 	for _, d := range incoming {
 		ad := kioskAd{
@@ -328,11 +463,22 @@ func handleSubmitAds(w http.ResponseWriter, r *http.Request) {
 
 	playlistMu.Lock()
 	submittedAds = append(submittedAds, ads...)
+	for _, ad := range ads {
+		submissions[ad.ID] = &submissionRecord{
+			Ad:          ad,
+			OwnerSub:    userInfo.Sub,
+			OwnerEmail:  userInfo.Email,
+			OwnerName:   userInfo.Name,
+			Stage:       "submitted",
+			SubmittedAt: now,
+		}
+	}
+	total := len(submittedAds)
 	playlistMu.Unlock()
 
-	log.Printf("Submit: %d ad(s) queued for admin review (total submitted: %d)", len(ads), len(submittedAds))
+	log.Printf("Submit [%s]: %d ad(s) queued for review (total: %d)", userInfo.Email, len(ads), total)
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "submitted": len(submittedAds)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "submitted": total})
 }
 
 // handleActivate is called by the kiosk Z-key.
@@ -340,6 +486,9 @@ func handleSubmitAds(w http.ResponseWriter, r *http.Request) {
 // Submitted-but-not-approved ads are never touched here.
 func handleActivate(w http.ResponseWriter, r *http.Request) {
 	playlistMu.Lock()
+	for _, ad := range approvedAds {
+		updateSubmissionStage(ad.ID, "active")
+	}
 	forcedAds = append(forcedAds, approvedAds...)
 	activated := len(approvedAds)
 	approvedAds = nil
@@ -393,21 +542,60 @@ func handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
+// handleAdminPage serves the server-side rendered admin dashboard.
+// SECURITY: This is served as a standalone HTML page, NOT bundled with the
+// public React app, to prevent reverse engineering of admin functionality.
+func handleAdminPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Add security headers
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Write(adminTemplateHTML)
+}
+
+// adminAd enriches a kioskAd with submitter information for the admin view.
+type adminAd struct {
+	kioskAd
+	SubmitterName  string `json:"submitterName,omitempty"`
+	SubmitterEmail string `json:"submitterEmail,omitempty"`
+	SubmittedAt    string `json:"submittedAt,omitempty"`
+	ApprovedAt     string `json:"approvedAt,omitempty"`
+}
+
+func enrichAds(ads []kioskAd) []adminAd {
+	out := make([]adminAd, len(ads))
+	for i, a := range ads {
+		aa := adminAd{kioskAd: a}
+		if rec, ok := submissions[a.ID]; ok {
+			aa.SubmitterName = rec.OwnerName
+			aa.SubmitterEmail = rec.OwnerEmail
+			aa.SubmittedAt = rec.SubmittedAt.Format(time.RFC3339)
+			if !rec.ApprovedAt.IsZero() {
+				aa.ApprovedAt = rec.ApprovedAt.Format(time.RFC3339)
+			}
+		}
+		out[i] = aa
+	}
+	return out
+}
+
 func handleAdminState(w http.ResponseWriter, r *http.Request) {
 	playlistMu.RLock()
-	active := forcedAds
-	approved := approvedAds
-	submitted := submittedAds
+	active := enrichAds(forcedAds)
+	approved := enrichAds(approvedAds)
+	submitted := enrichAds(submittedAds)
 	playlistMu.RUnlock()
 
 	if active == nil {
-		active = []kioskAd{}
+		active = []adminAd{}
 	}
 	if approved == nil {
-		approved = []kioskAd{}
+		approved = []adminAd{}
 	}
 	if submitted == nil {
-		submitted = []kioskAd{}
+		submitted = []adminAd{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -416,6 +604,64 @@ func handleAdminState(w http.ResponseWriter, r *http.Request) {
 		"approved":  approved,
 		"submitted": submitted,
 	})
+}
+
+// handleAdminSetPlaylist atomically replaces the live playlist with an ordered
+// selection of IDs drawn from the approved+live pool.
+// Items removed from the selection are returned to the approved (holding) queue.
+func handleAdminSetPlaylist(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad JSON", http.StatusBadRequest)
+		return
+	}
+
+	playlistMu.Lock()
+	// Build a unified pool from both approved and currently live.
+	pool := make(map[string]kioskAd)
+	for _, a := range approvedAds {
+		pool[a.ID] = a
+	}
+	for _, a := range forcedAds {
+		pool[a.ID] = a
+	}
+
+	// Build new live playlist in the given order.
+	inSelection := make(map[string]bool, len(body.IDs))
+	newForced := make([]kioskAd, 0, len(body.IDs))
+	for _, id := range body.IDs {
+		if a, ok := pool[id]; ok {
+			newForced = append(newForced, a)
+			inSelection[id] = true
+			updateSubmissionStage(id, "active")
+		}
+	}
+
+	// Everything NOT in selection returns to / stays in approved (holding).
+	newApproved := make([]kioskAd, 0)
+	for _, a := range approvedAds {
+		if !inSelection[a.ID] {
+			newApproved = append(newApproved, a)
+		}
+	}
+	for _, a := range forcedAds {
+		if !inSelection[a.ID] {
+			newApproved = append(newApproved, a)
+			if rec, ok := submissions[a.ID]; ok && rec.Stage == "active" {
+				rec.Stage = "approved"
+			}
+		}
+	}
+
+	forcedAds = newForced
+	approvedAds = newApproved
+	playlistMu.Unlock()
+
+	log.Printf("Admin: playlist updated — %d live, %d returned to holding", len(newForced), len(newApproved))
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
 func handleAdminStats(w http.ResponseWriter, r *http.Request) {
@@ -501,6 +747,7 @@ func handleAdminDeleteActive(w http.ResponseWriter, r *http.Request) {
 	}
 	if found {
 		forcedAds = n
+		updateSubmissionStage(id, "removed")
 	}
 	playlistMu.Unlock()
 	if !found {
@@ -526,6 +773,7 @@ func handleAdminDeleteSubmitted(w http.ResponseWriter, r *http.Request) {
 	}
 	if found {
 		submittedAds = n
+		updateSubmissionStage(id, "removed")
 	}
 	playlistMu.Unlock()
 	if !found {
@@ -551,6 +799,7 @@ func handleAdminDeleteApproved(w http.ResponseWriter, r *http.Request) {
 	}
 	if found {
 		approvedAds = n
+		updateSubmissionStage(id, "removed")
 	}
 	playlistMu.Unlock()
 	if !found {
@@ -577,6 +826,10 @@ func handleAdminApproveSubmitted(w http.ResponseWriter, r *http.Request) {
 	}
 	if found {
 		submittedAds = remaining
+		updateSubmissionStage(id, "approved")
+		if rec, ok := submissions[id]; ok {
+			rec.ApprovedAt = time.Now()
+		}
 	}
 	playlistMu.Unlock()
 	if !found {
@@ -603,6 +856,7 @@ func handleAdminActivateApproved(w http.ResponseWriter, r *http.Request) {
 	}
 	if found {
 		approvedAds = remaining
+		updateSubmissionStage(id, "active")
 	}
 	playlistMu.Unlock()
 	if !found {
@@ -617,6 +871,9 @@ func handleAdminActivateApproved(w http.ResponseWriter, r *http.Request) {
 func handleAdminClearActive(w http.ResponseWriter, r *http.Request) {
 	playlistMu.Lock()
 	n := len(forcedAds)
+	for _, ad := range forcedAds {
+		updateSubmissionStage(ad.ID, "removed")
+	}
 	forcedAds = nil
 	playlistMu.Unlock()
 	log.Printf("Admin: cleared %d active ad(s)", n)
@@ -624,10 +881,11 @@ func handleAdminClearActive(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "cleared": n})
 }
 
-// handleAdminReload moves all approved ads → live (same as Z-key) then signals
-// the kiosk. The kiosk will pick up the new playlist on its next poll (≤60s).
 func handleAdminReload(w http.ResponseWriter, r *http.Request) {
 	playlistMu.Lock()
+	for _, ad := range approvedAds {
+		updateSubmissionStage(ad.ID, "active")
+	}
 	forcedAds = append(forcedAds, approvedAds...)
 	activated := len(approvedAds)
 	approvedAds = nil
@@ -701,6 +959,200 @@ func handleAdminUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	updateStatusMu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(s)
+}
+
+// ─── User-facing handlers ────────────────────────────────────────────────────
+
+func handleReportShown(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == "" {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	playlistMu.Lock()
+	if rec, ok := submissions[body.ID]; ok {
+		rec.ShownOnKiosk = true
+	}
+	playlistMu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// handleKioskScreenshot accepts JPEG screenshot uploads from the kiosk.
+// POST body should be raw JPEG bytes with Content-Type: image/jpeg
+func handleKioskScreenshot(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Content-Type") != "image/jpeg" {
+		http.Error(w, "expected image/jpeg", http.StatusBadRequest)
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(r.Body, 10<<20)) // 10 MB max
+	if err != nil {
+		http.Error(w, "read failed", http.StatusBadRequest)
+		return
+	}
+	kioskScreenshotMu.Lock()
+	kioskScreenshotData = data
+	kioskScreenshotTime = time.Now()
+	kioskScreenshotMu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// handleKioskCurrentAd accepts updates about which ad is currently showing.
+func handleKioskCurrentAd(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID string `json:"id,omitempty"` // empty = transitioning or idle
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad JSON", http.StatusBadRequest)
+		return
+	}
+	currentKioskAdMu.Lock()
+	if body.ID == "" {
+		currentKioskAd = nil
+	} else {
+		playlistMu.RLock()
+		for _, ad := range forcedAds {
+			if ad.ID == body.ID {
+				currentKioskAd = &ad
+				break
+			}
+		}
+		playlistMu.RUnlock()
+	}
+	currentKioskAdMu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// handleAdminScreenshot returns the latest kiosk screenshot plus metadata about
+// the currently-displayed ad.
+func handleAdminScreenshot(w http.ResponseWriter, r *http.Request) {
+	kioskScreenshotMu.RLock()
+	data := kioskScreenshotData
+	screenshotTime := kioskScreenshotTime
+	kioskScreenshotMu.RUnlock()
+
+	currentKioskAdMu.RLock()
+	currentAd := currentKioskAd
+	currentKioskAdMu.RUnlock()
+
+	if len(data) == 0 {
+		// No screenshot yet
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"hasScreenshot": false,
+			"message":       "No screenshot available yet",
+		})
+		return
+	}
+
+	var adInfo *adminAd
+	if currentAd != nil {
+		playlistMu.RLock()
+		enriched := enrichAds([]kioskAd{*currentAd})
+		playlistMu.RUnlock()
+		if len(enriched) > 0 {
+			adInfo = &enriched[0]
+		}
+	}
+
+	// Return JSON with base64-encoded image and ad metadata
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]any{
+		"hasScreenshot":  true,
+		"screenshot":     data, // Will be base64-encoded by json.Encoder
+		"screenshotTime": screenshotTime.Format(time.RFC3339),
+		"currentAd":      adInfo,
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func handleGetMyAds(w http.ResponseWriter, r *http.Request) {
+	userInfo, err := verifyGoogleToken(r.Header.Get("X-Google-Token"))
+	if err != nil {
+		http.Error(w, `{"error":"unauthenticated"}`, http.StatusUnauthorized)
+		return
+	}
+	type userAdResp struct {
+		ID           string    `json:"id"`
+		Name         string    `json:"name"`
+		Type         string    `json:"type"`
+		Src          string    `json:"src"`
+		DurationMs   int       `json:"durationMs"`
+		Stage        string    `json:"stage"`
+		ShownOnKiosk bool      `json:"shownOnKiosk"`
+		SubmittedAt  time.Time `json:"submittedAt"`
+	}
+	playlistMu.RLock()
+	var result []userAdResp
+	for _, rec := range submissions {
+		if rec.OwnerSub != userInfo.Sub {
+			continue
+		}
+		result = append(result, userAdResp{
+			ID: rec.Ad.ID, Name: rec.Ad.Name, Type: rec.Ad.Type,
+			Src: rec.Ad.Src, DurationMs: rec.Ad.DurationMs,
+			Stage: rec.Stage, ShownOnKiosk: rec.ShownOnKiosk,
+			SubmittedAt: rec.SubmittedAt,
+		})
+	}
+	playlistMu.RUnlock()
+	if result == nil {
+		result = []userAdResp{}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].SubmittedAt.After(result[j].SubmittedAt)
+	})
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
+}
+
+func handleRetractAd(w http.ResponseWriter, r *http.Request) {
+	userInfo, err := verifyGoogleToken(r.Header.Get("X-Google-Token"))
+	if err != nil {
+		http.Error(w, `{"error":"unauthenticated"}`, http.StatusUnauthorized)
+		return
+	}
+	id := r.PathValue("id")
+	playlistMu.Lock()
+	rec, exists := submissions[id]
+	if !exists || rec.OwnerSub != userInfo.Sub {
+		playlistMu.Unlock()
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+	if rec.Stage == "active" {
+		playlistMu.Unlock()
+		http.Error(w, `{"error":"ad is already live — ask an admin to remove it"}`, http.StatusConflict)
+		return
+	}
+	if rec.Stage == "removed" {
+		playlistMu.Unlock()
+		http.Error(w, `{"error":"already removed"}`, http.StatusGone)
+		return
+	}
+	ns := submittedAds[:0:0]
+	for _, a := range submittedAds {
+		if a.ID != id {
+			ns = append(ns, a)
+		}
+	}
+	submittedAds = ns
+	na := approvedAds[:0:0]
+	for _, a := range approvedAds {
+		if a.ID != id {
+			na = append(na, a)
+		}
+	}
+	approvedAds = na
+	rec.Stage = "removed"
+	playlistMu.Unlock()
+	log.Printf("User retract [%s]: removed %q", userInfo.Email, id)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
 func monitorKiosk(path string) {

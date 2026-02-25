@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-
 export function useClock(): Date {
   const [now, setNow] = useState<Date>(() => new Date())
   useEffect(() => {

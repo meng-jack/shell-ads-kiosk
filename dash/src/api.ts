@@ -48,6 +48,11 @@ export interface KioskAd {
   durationMs: number;
   src?: string;
   html?: string;
+  // enriched by admin state endpoint
+  submitterName?: string;
+  submitterEmail?: string;
+  submittedAt?: string;
+  approvedAt?: string;
 }
 
 // Three-stage pipeline: submitted → approved → active
@@ -87,6 +92,14 @@ export const adminApi = {
   logout: () => req<{ ok: boolean }>("DELETE", "/api/admin/logout"),
   state: () => req<AdminState>("GET", "/api/admin/state"),
   stats: () => req<AdminStats>("GET", "/api/admin/stats"),
+  screenshot: () =>
+    req<{
+      hasScreenshot: boolean;
+      screenshot?: number[];
+      screenshotTime?: string;
+      currentAd?: KioskAd;
+      message?: string;
+    }>("GET", "/api/admin/screenshot"),
   reorder: (ids: string[]) =>
     req<{ ok: boolean }>("PUT", "/api/admin/reorder", { ids }),
   // active
@@ -104,7 +117,9 @@ export const adminApi = {
     req<{ ok: boolean }>("POST", `/api/admin/submitted/${id}/approve`),
   deleteSubmitted: (id: string) =>
     req<{ ok: boolean }>("DELETE", `/api/admin/submitted/${id}`),
-  // kiosk control
+  // playlist management
+  setPlaylist: (ids: string[]) =>
+    req<{ ok: boolean }>("PUT", "/api/admin/playlist", { ids }),
   reload: () =>
     req<{ ok: boolean; activated: number }>("POST", "/api/admin/reload"),
   restartKiosk: () => req<{ ok: boolean }>("POST", "/api/admin/restart-kiosk"),

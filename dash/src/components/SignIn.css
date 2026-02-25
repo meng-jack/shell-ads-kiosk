@@ -1,0 +1,50 @@
+.si-wrap {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    text-align: center;
+}
+
+.si-wordmark {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    opacity: 0.45;
+    margin-bottom: 10px;
+}
+
+.si-title {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 12px;
+}
+
+.si-sub {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dim);
+    max-width: 300px;
+    line-height: 1.55;
+    margin-bottom: 32px;
+}
+
+.si-btn-wrap {
+    /* Google renders its own styled button here */
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.si-note {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--dim);
+    max-width: 280px;
+    line-height: 1.5;
+    opacity: 0.6;
+}
