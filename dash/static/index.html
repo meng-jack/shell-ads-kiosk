@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Startup Shell — Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="vignette"></div>
+
+    <div class="layout">
+      <!-- ── Header ── -->
+      <header class="header">
+        <div class="header-left">
+          <h1 class="brand">Startup Shell</h1>
+          <p class="brand-sub">UMD's Home for Creators &amp; Entrepreneurs</p>
+        </div>
+        <div class="header-right">
+          <div class="clock" id="clock">--:--:--</div>
+          <div class="date" id="date">Loading…</div>
+        </div>
+      </header>
+
+      <!-- ── Stats Bar ── -->
+      <div class="stats-bar">
+        <div class="stat-item">
+          <span class="stat-num">600+</span>
+          <span class="stat-label">Members</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-num">300+</span>
+          <span class="stat-label">Ventures</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-num">$2B+</span>
+          <span class="stat-label">Venture Value</span>
+        </div>
+      </div>
+
+      <div class="rule"></div>
+
+      <!-- ── Cards Grid ── -->
+      <div class="grid">
+        <!-- System Status -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">System Status</span>
+            <span class="badge badge--green" id="sysBadge">●&nbsp;Online</span>
+          </div>
+          <div class="detail-list">
+            <div class="detail-row">
+              <span class="detail-label">Uptime</span>
+              <span class="detail-value" id="uptime">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Started</span>
+              <span class="detail-value" id="startedAt">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Port</span>
+              <span class="detail-value">:6969</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tunnel / Network -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Tunnel</span>
+            <span class="badge badge--green">●&nbsp;Active</span>
+          </div>
+          <div class="detail-list">
+            <div class="detail-row">
+              <span class="detail-label">Provider</span>
+              <span class="detail-value">cloudflared</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Domain</span>
+              <span class="detail-value">shellnews.exoad.net</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Local</span>
+              <span class="detail-value">localhost:6969</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Kiosk Display -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Kiosk Display</span>
+            <span class="badge badge--green">●&nbsp;Active</span>
+          </div>
+          <div class="detail-list">
+            <div class="detail-row">
+              <span class="detail-label">Mode</span>
+              <span class="detail-value">Fullscreen</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Sleep</span>
+              <span class="detail-value">Prevented</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Resolution</span>
+              <span class="detail-value">1920 × 1080</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ad Playlist -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Ad Playlist</span>
+            <span class="badge badge--yellow">●&nbsp;Looping</span>
+          </div>
+          <div class="detail-list">
+            <div class="detail-row">
+              <span class="detail-label">Now Playing</span>
+              <span class="detail-value">—</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Source</span>
+              <span class="detail-value">Remote API</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Cache</span>
+              <span class="detail-value">Local disk</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Footer ── -->
+      <footer class="footer">
+        <span>Startup Shell Dashboard</span>
+        <span class="footer-sep">·</span>
+        <span>shellnews.exoad.net</span>
+        <span class="footer-sep">·</span>
+        <span>UMD College Park</span>
+        <span class="footer-sep">·</span>
+        <span id="footerTime">—</span>
+      </footer>
+    </div>
+
+    <script>
+      // ── Clock ────────────────────────────────────────────────
+      function updateClock() {
+        const now = new Date();
+        document.getElementById("clock").textContent = now.toLocaleTimeString(
+          "en-US",
+          { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }
+        );
+        document.getElementById("date").textContent = now.toLocaleDateString(
+          "en-US",
+          { weekday: "long", year: "numeric", month: "long", day: "numeric" }
+        );
+        document.getElementById("footerTime").textContent =
+          now.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          });
+      }
+      updateClock();
+      setInterval(updateClock, 1000);
+
+      // ── Status polling ───────────────────────────────────────
+      async function pollStatus() {
+        try {
+          const res = await fetch("/api/status");
+          const data = await res.json();
+
+          document.getElementById("sysBadge").className = "badge badge--green";
+          document.getElementById("sysBadge").innerHTML = "●&nbsp;Online";
+          document.getElementById("uptime").textContent = data.uptime;
+
+          if (data.started_at) {
+            const started = new Date(data.started_at);
+            document.getElementById("startedAt").textContent =
+              started.toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: false,
+              });
+          }
+        } catch {
+          document.getElementById("sysBadge").className = "badge badge--red";
+          document.getElementById("sysBadge").innerHTML = "●&nbsp;Offline";
+        }
+      }
+      pollStatus();
+      setInterval(pollStatus, 5000);
+    </script>
+  </body>
+</html>

@@ -131,9 +131,9 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	// Prevent Windows from going to sleep
+	// Prevent Windows from going to sleep / locking the screen.
+	// Update checking is handled externally by launcher.exe.
 	PreventWindowsSleep()
-	a.startAutoUpdate()
 }
 
 // newCacheHandler returns an http.Handler that serves locally-cached media assets

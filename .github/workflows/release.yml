@@ -1,0 +1,128 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'build-*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Release
+    runs-on: windows-latest
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Extract build number from tag (build-42 → 42) ─────────────────────
+      - name: Extract build number
+        id: meta
+        shell: pwsh
+        run: |
+          $num = "${{ github.ref_name }}" -replace "^build-", ""
+          "number=$num"          | Out-File -Append $env:GITHUB_OUTPUT
+          "tag=${{ github.ref_name }}" | Out-File -Append $env:GITHUB_OUTPUT
+          Write-Host "Build number: $num"
+
+      # ── Go ──────────────────────────────────────────────────────────────────
+      - name: Setup Go 1.24
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      # ── Node ────────────────────────────────────────────────────────────────
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ── Wails ───────────────────────────────────────────────────────────────
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+
+      # ── Build kiosk ─────────────────────────────────────────────────────────
+      - name: Build Kiosk
+        run: >
+          wails build
+          -platform windows/amd64
+          -tags production
+          -ldflags="-s -w -X main.BuildNumber=${{ steps.meta.outputs.number }}"
+        # Output → build/bin/shell-ads-kiosk.exe
+
+      # ── Build dashboard ─────────────────────────────────────────────────────
+      - name: Install Dashboard dependencies
+        working-directory: dash
+        run: npm install
+
+      - name: Build Dashboard
+        working-directory: dash
+        run: npm run build
+        # Output → dash/dist/
+
+      # ── Build launcher ──────────────────────────────────────────────────────
+      - name: Tidy Launcher dependencies
+        working-directory: launcher
+        run: go mod tidy
+
+      - name: Build Launcher
+        working-directory: launcher
+        run: >
+          go build
+          -ldflags="-s -w -X main.BuildNumber=${{ steps.meta.outputs.number }}"
+          -o launcher.exe
+          .
+        # Output → launcher/launcher.exe
+
+      # ── Bundle everything into a single zip ─────────────────────────────────
+      - name: Bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bundle       | Out-Null
+          New-Item -ItemType Directory -Force -Path bundle\dash  | Out-Null
+
+          Copy-Item build\bin\shell-ads-kiosk.exe  bundle\kiosk.exe
+          Copy-Item launcher\launcher.exe          bundle\launcher.exe
+          Copy-Item -Recurse -Path dash\dist\*    -Destination bundle\dash\
+
+          Write-Host "`nBundle contents:"
+          Get-ChildItem bundle -Recurse | ForEach-Object {
+            Write-Host "  $($_.FullName.Replace((Get-Location).Path + '\bundle\', ''))"
+          }
+
+          Compress-Archive -Path bundle\* -DestinationPath shell-ads-bundle-windows-x64.zip -Force
+
+          $size = [math]::Round((Get-Item shell-ads-bundle-windows-x64.zip).Length / 1MB, 2)
+          Write-Host "`nZip: shell-ads-bundle-windows-x64.zip ($size MB)"
+
+      # ── Create GitHub release ───────────────────────────────────────────────
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "Build ${{ steps.meta.outputs.number }}"
+          generate_release_notes: true
+          files: shell-ads-bundle-windows-x64.zip
+          body: |
+            ## Shell Ads Kiosk — Build ${{ steps.meta.outputs.number }}
+
+            ### Bundle contents
+            | File / Folder | Description |
+            |---|---|
+            | `kiosk.exe` | Wails ad-display kiosk (Startup Shell renderer) |
+            | `launcher.exe` | **Start this.** Launches kiosk, serves dashboard, auto-updates |
+            | `dash/` | Dashboard static files — served on `http://localhost:6969` |
+
+            ### First-time setup
+            1. Extract `shell-ads-bundle-windows-x64.zip` to any folder (e.g. `C:\kiosk\`)
+            2. Run `launcher.exe`
+            3. Dashboard is available at **http://localhost:6969**
+            4. Tunnel to **https://shellnews.exoad.net** via `cloudflared`
+
+            ### Updates
+            `launcher.exe` checks for new builds automatically every hour.
+            When a newer build is found the entire bundle is re-downloaded, files
+            are replaced, and the launcher restarts itself — no manual action needed.

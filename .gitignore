@@ -2,3 +2,11 @@ build/bin
 node_modules
 frontend/dist
 kiosk.json
+
+# Launcher
+launcher/launcher.exe
+launcher/go.sum
+
+# Dashboard build output
+dash/dist
+dash/node_modules

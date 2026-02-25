@@ -1,0 +1,104 @@
+.card {
+  background: var(--cream-08);
+  border: 1px solid var(--cream-15);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  transition: background 0.18s ease;
+}
+
+.card:hover {
+  background: rgba(251, 245, 243, 0.13);
+}
+
+/* ── Header row ─────────────────────────────────── */
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.card-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+/* ── Badges ─────────────────────────────────────── */
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.badge--green {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.28);
+}
+
+.badge--yellow {
+  background: rgba(234, 179, 8, 0.18);
+  color: #fde047;
+  border: 1px solid rgba(234, 179, 8, 0.28);
+}
+
+.badge--red {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.28);
+}
+
+.badge--blue {
+  background: rgba(96, 165, 250, 0.18);
+  color: #93c5fd;
+  border: 1px solid rgba(96, 165, 250, 0.28);
+}
+
+/* ── Detail rows ────────────────────────────────── */
+.card-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--cream-08);
+}
+
+.card-row:first-child {
+  padding-top: 0;
+}
+
+.card-row:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.card-row-label {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.50;
+  white-space: nowrap;
+}
+
+.card-row-value {
+  font-size: 14px;
+  font-weight: 700;
+  text-align: right;
+  word-break: break-all;
+}

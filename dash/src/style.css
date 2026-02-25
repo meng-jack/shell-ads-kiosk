@@ -1,0 +1,26 @@
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --red: #d74034;
+    --cream: #fbf5f3;
+    --dim: rgba(251, 245, 243, 0.45);
+    --line: rgba(251, 245, 243, 0.18);
+    --font: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+html,
+body,
+#root {
+    width: 100%;
+    min-height: 100vh;
+    background: var(--red);
+    color: var(--cream);
+    font-family: var(--font);
+}

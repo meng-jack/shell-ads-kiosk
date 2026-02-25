@@ -1,0 +1,17 @@
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.38;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+  padding-bottom: 4px;
+}
+
+.sep {
+  opacity: 0.5;
+}

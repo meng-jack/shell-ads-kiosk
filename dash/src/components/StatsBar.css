@@ -1,0 +1,47 @@
+.statsbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cream-08);
+  border: 1px solid var(--cream-15);
+  border-radius: var(--radius);
+  padding: 20px 0;
+  flex-shrink: 0;
+}
+
+.statsbar-group {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.statsbar-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.statsbar-num {
+  font-size: clamp(28px, 3.5vw, 42px);
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  line-height: 1;
+  color: var(--cream);
+}
+
+.statsbar-label {
+  font-size: clamp(11px, 1vw, 13px);
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.60;
+}
+
+.statsbar-divider {
+  width: 1px;
+  height: 48px;
+  background: var(--cream-30);
+  flex-shrink: 0;
+}

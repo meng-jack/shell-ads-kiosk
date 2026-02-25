@@ -1,0 +1,63 @@
+.aq {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.aq-divider {
+    height: 1px;
+    background: var(--line);
+    margin: 36px 0 8px;
+}
+
+.aq-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.aq-left {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.aq-name {
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.aq-url {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: ui-monospace, monospace;
+}
+
+.aq-status {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.aq-status--pending {
+    color: rgba(253, 224, 71, 0.8);
+}
+.aq-status--approved {
+    color: rgba(134, 239, 172, 0.8);
+}
+.aq-status--rejected {
+    color: rgba(252, 165, 165, 0.8);
+}
