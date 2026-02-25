@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   appType: "spa",
+  publicDir: "static",
   server: {
     port: 5173, // dev server — launcher is on 6969
     host: true,
