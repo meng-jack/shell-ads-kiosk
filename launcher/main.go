@@ -2,7 +2,9 @@ package main
 
 import (
 	"archive/zip"
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -108,11 +110,61 @@ var (
 	forcedAds  []kioskAd // activated by kiosk Z-key, served to kiosk
 )
 
+// ─── Admin auth ───────────────────────────────────────────────────────────────
+
+// adminPassword is read from the ADMIN_PASSWORD env var at startup.
+// Defaults to "shellnews" — always override in production.
+var adminPassword = func() string {
+	if p := strings.TrimSpace(os.Getenv("ADMIN_PASSWORD")); p != "" {
+		return p
+	}
+	return "shellnews"
+}()
+
+type tokenEntry struct{ expiry time.Time }
+
+var adminTokens sync.Map // string → tokenEntry
+
+func generateToken() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func isValidToken(token string) bool {
+	if token == "" {
+		return false
+	}
+	v, ok := adminTokens.Load(token)
+	if !ok {
+		return false
+	}
+	if time.Now().After(v.(tokenEntry).expiry) {
+		adminTokens.Delete(token)
+		return false
+	}
+	return true
+}
+
+func requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !isValidToken(token) {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 	log.Printf("Shell Ads Launcher — build=%s", BuildNumber)
+	if adminPassword == "shellnews" {
+		log.Printf("Admin: using default password — set ADMIN_PASSWORD env var to override")
+	}
 
 	exeDir := exeDirectory()
 	log.Printf("Base directory: %s", exeDir)
@@ -132,6 +184,25 @@ func main() {
 
 // ─── Dashboard server ─────────────────────────────────────────────────────────
 
+// spaHandler wraps a file server so any path that doesn't match a real file
+// falls back to index.html — required for React Router client-side routing.
+func spaHandler(fsys fs.FS) http.Handler {
+	fileServer := http.FileServer(http.FS(fsys))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		if name == "" {
+			name = "index.html"
+		}
+		if f, err := fsys.Open(name); err == nil {
+			f.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		// Unknown path → serve index.html so React Router handles it
+		http.ServeFileFS(w, r, fsys, "index.html")
+	})
+}
+
 func serveDash() {
 	sub, err := fs.Sub(staticFiles, "static")
 	if err != nil {
@@ -140,15 +211,28 @@ func serveDash() {
 
 	mux := http.NewServeMux()
 
-	// API — must be registered before the catch-all file server
-	mux.HandleFunc("POST /api/submit-ads", handleSubmitAds) // dashboard → pending
-	mux.HandleFunc("POST /api/activate", handleActivate)    // kiosk Z-key → active
-	mux.HandleFunc("GET /api/playlist", handlePlaylist)     // kiosk polls this
+	// ── Public API ────────────────────────────────────────────────────────────
+	mux.HandleFunc("POST /api/submit-ads", handleSubmitAds)
+	mux.HandleFunc("POST /api/activate", handleActivate)
+	mux.HandleFunc("GET /api/playlist", handlePlaylist)
 
-	// Everything else → embedded React app
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	// ── Admin auth ────────────────────────────────────────────────────────────
+	mux.HandleFunc("POST /api/admin/auth", handleAdminAuth)
 
-	log.Printf("Dashboard: http://localhost%s", dashPort)
+	// ── Admin protected ───────────────────────────────────────────────────────
+	mux.HandleFunc("GET /api/admin/state", requireAdmin(handleAdminState))
+	mux.HandleFunc("PUT /api/admin/reorder", requireAdmin(handleAdminReorder))
+	mux.HandleFunc("DELETE /api/admin/active/{id}", requireAdmin(handleAdminDeleteActive))
+	mux.HandleFunc("DELETE /api/admin/pending/{id}", requireAdmin(handleAdminDeletePending))
+	mux.HandleFunc("POST /api/admin/pending/{id}/approve", requireAdmin(handleAdminApprovePending))
+	mux.HandleFunc("POST /api/admin/clear", requireAdmin(handleAdminClearActive))
+	mux.HandleFunc("POST /api/admin/reload", requireAdmin(handleAdminReload))
+	mux.HandleFunc("DELETE /api/admin/logout", requireAdmin(handleAdminLogout))
+
+	// ── SPA fallback ──────────────────────────────────────────────────────────
+	mux.Handle("/", spaHandler(sub))
+
+	log.Printf("Dashboard: http://localhost%s  |  Admin: http://localhost%s/admin", dashPort, dashPort)
 	if err := http.ListenAndServe(dashPort, mux); err != nil {
 		log.Fatalf("Dashboard server: %v", err)
 	}
@@ -223,6 +307,162 @@ func handlePlaylist(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(ads)
+}
+
+// ─── Admin API handlers ───────────────────────────────────────────────────────
+
+func handleAdminAuth(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad JSON", http.StatusBadRequest)
+		return
+	}
+	if body.Password != adminPassword {
+		http.Error(w, `{"error":"wrong password"}`, http.StatusUnauthorized)
+		return
+	}
+	token := generateToken()
+	adminTokens.Store(token, tokenEntry{expiry: time.Now().Add(24 * time.Hour)})
+	log.Printf("Admin: login successful")
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"token": token})
+}
+
+func handleAdminLogout(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	adminTokens.Delete(token)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func handleAdminState(w http.ResponseWriter, r *http.Request) {
+	playlistMu.RLock()
+	active := forcedAds
+	pending := pendingAds
+	playlistMu.RUnlock()
+
+	if active == nil {
+		active = []kioskAd{}
+	}
+	if pending == nil {
+		pending = []kioskAd{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"active":  active,
+		"pending": pending,
+	})
+}
+
+func handleAdminReorder(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad JSON", http.StatusBadRequest)
+		return
+	}
+
+	playlistMu.Lock()
+	adMap := make(map[string]kioskAd, len(forcedAds))
+	for _, a := range forcedAds {
+		adMap[a.ID] = a
+	}
+	newOrder := make([]kioskAd, 0, len(forcedAds))
+	seen := make(map[string]bool)
+	for _, id := range body.IDs {
+		if a, ok := adMap[id]; ok {
+			newOrder = append(newOrder, a)
+			seen[id] = true
+		}
+	}
+	for _, a := range forcedAds {
+		if !seen[a.ID] {
+			newOrder = append(newOrder, a)
+		}
+	}
+	forcedAds = newOrder
+	playlistMu.Unlock()
+
+	log.Printf("Admin: reordered active playlist (%d items)", len(forcedAds))
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func handleAdminDeleteActive(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	playlistMu.Lock()
+	newList := forcedAds[:0:0]
+	for _, a := range forcedAds {
+		if a.ID != id {
+			newList = append(newList, a)
+		}
+	}
+	forcedAds = newList
+	playlistMu.Unlock()
+
+	log.Printf("Admin: deleted active ad %q", id)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func handleAdminDeletePending(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	playlistMu.Lock()
+	newList := pendingAds[:0:0]
+	for _, a := range pendingAds {
+		if a.ID != id {
+			newList = append(newList, a)
+		}
+	}
+	pendingAds = newList
+	playlistMu.Unlock()
+
+	log.Printf("Admin: deleted pending ad %q", id)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func handleAdminApprovePending(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	playlistMu.Lock()
+	newPending := pendingAds[:0:0]
+	for _, a := range pendingAds {
+		if a.ID == id {
+			forcedAds = append(forcedAds, a)
+		} else {
+			newPending = append(newPending, a)
+		}
+	}
+	pendingAds = newPending
+	playlistMu.Unlock()
+
+	log.Printf("Admin: approved pending ad %q → active", id)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func handleAdminClearActive(w http.ResponseWriter, r *http.Request) {
+	playlistMu.Lock()
+	n := len(forcedAds)
+	forcedAds = nil
+	playlistMu.Unlock()
+
+	log.Printf("Admin: cleared %d active ad(s)", n)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "cleared": n})
+}
+
+func handleAdminReload(w http.ResponseWriter, r *http.Request) {
+	// The kiosk polls /api/playlist every 60s automatically.
+	// This endpoint exists so the admin can trigger an immediate visual refresh
+	// from the dashboard — the response is instant; kiosk picks it up on next poll.
+	log.Printf("Admin: reload requested (kiosk will pick up on next poll)")
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
 // ─── Kiosk process management ─────────────────────────────────────────────────
