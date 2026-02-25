@@ -41,13 +41,14 @@ const TYPE_CONFIG: Record<
   },
   html: {
     label: "HTML",
-    placeholder: "https://example.com/ad.html",
+    placeholder: "https://example.com/ad",
     accept: ".html,.htm",
     exts: ["html", "htm"],
     mimes: ["text/html"],
     description:
-      "Rendered as a full-screen iframe on the kiosk. Accepted formats: HTML, HTM.",
-    urlHint: "Must be a direct public link to a .html or .htm file.",
+      "Rendered as a full-screen iframe on the kiosk. Accepts HTML content from any URL.",
+    urlHint:
+      "Must be a direct public link to HTML content (with or without .html/.htm extension).",
     warning:
       "Bundle all CSS, JavaScript, and images into a single self-contained file — no relative local file references. External CDN links are fine.\n\nUploading malicious, deceptive, or harmful content will result in immediate permanent removal and may carry severe legal consequences.",
   },
@@ -230,7 +231,8 @@ export default function SubmitPanel({ onSubmit }: Props) {
     } catch {
       return "Enter a valid URL (must start with https://).";
     }
-    if (mode === "url") {
+    if (mode === "url" && type !== "html") {
+      // Skip extension validation for HTML — can be served from any URL.
       const extErr = validateUrlExt(finalUrl, cfg);
       if (extErr) return extErr;
     }
