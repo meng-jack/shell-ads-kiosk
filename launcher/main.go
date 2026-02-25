@@ -612,7 +612,9 @@ func handleAdminKioskPrev(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-}(w http.ResponseWriter, r *http.Request) {
+}
+
+func handleAdminTriggerUpdate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if BuildNumber == "dev" {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "reason": "dev build — updates disabled"})
