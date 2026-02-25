@@ -9,17 +9,11 @@
 
 :root {
     --red: #d74034;
-    --cream: #ffffff;
-    --dim: rgba(255, 255, 255, 0.55);
-    --line: rgba(255, 255, 255, 0.22);
-    --line-hi: rgba(255, 255, 255, 0.38);
-    --surface: rgba(255, 255, 255, 0.1);
-    --surface-lo: rgba(255, 255, 255, 0.06);
-    --surface-hi: rgba(255, 255, 255, 0.16);
-    --shadow: none;
-    --shadow-sm: none;
-    --shadow-inset: none;
-    --cream-08: rgba(255, 255, 255, 0.08);
+    --cream: #fbf5f3;
+    --dim: rgba(251, 245, 243, 0.45);
+    --line: rgba(251, 245, 243, 0.18);
+    --line-hi: rgba(251, 245, 243, 0.28);
+    --cream-08: rgba(251, 245, 243, 0.08);
     --font: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
