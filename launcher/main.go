@@ -132,6 +132,34 @@ type tokenEntry struct{ expiry time.Time }
 
 var adminTokens sync.Map // string → tokenEntry
 
+// ─── Update status (polled by admin dashboard for live progress) ──────────────
+
+type updateStageInfo struct {
+	Stage   string `json:"stage"` // idle|checking|up_to_date|downloading|applying|restarting|error
+	Message string `json:"message"`
+	Current string `json:"current"` // this binary's build label
+	Latest  string `json:"latest"`  // latest GitHub release tag (empty until known)
+	ErrMsg  string `json:"error,omitempty"`
+}
+
+var (
+	updateStatusMu  sync.RWMutex
+	updateStatusVal = updateStageInfo{Stage: "idle", Current: BuildNumber}
+)
+
+func setUpdateStage(stage, message, latest, errMsg string) {
+	updateStatusMu.Lock()
+	updateStatusVal = updateStageInfo{
+		Stage:   stage,
+		Message: message,
+		Current: BuildNumber,
+		Latest:  latest,
+		ErrMsg:  errMsg,
+	}
+	updateStatusMu.Unlock()
+	log.Printf("Update [%s] %s", stage, message)
+}
+
 func generateToken() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
@@ -238,6 +266,8 @@ func serveDash() {
 	mux.HandleFunc("POST /api/admin/clear", requireAdmin(handleAdminClearActive))
 	mux.HandleFunc("POST /api/admin/reload", requireAdmin(handleAdminReload))
 	mux.HandleFunc("POST /api/admin/restart-kiosk", requireAdmin(handleAdminRestartKiosk))
+	mux.HandleFunc("POST /api/admin/trigger-update", requireAdmin(handleAdminTriggerUpdate))
+	mux.HandleFunc("GET /api/admin/update-status", requireAdmin(handleAdminUpdateStatus))
 	mux.HandleFunc("DELETE /api/admin/logout", requireAdmin(handleAdminLogout))
 
 	// ── SPA fallback ──────────────────────────────────────────────────────────
@@ -546,7 +576,35 @@ func handleAdminRestartKiosk(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
-// ─── Kiosk process management ─────────────────────────────────────────────────
+func handleAdminTriggerUpdate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if BuildNumber == "dev" {
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "reason": "dev build — updates disabled"})
+		return
+	}
+	updateMu.RLock()
+	busy := updating
+	updateMu.RUnlock()
+	if busy {
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "reason": "update already in progress"})
+		return
+	}
+	exeDir := exeDirectory()
+	go func() {
+		if err := checkAndApply(exeDir); err != nil {
+			log.Printf("Admin trigger-update: %v", err)
+		}
+	}()
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
+func handleAdminUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	updateStatusMu.RLock()
+	s := updateStatusVal
+	updateStatusMu.RUnlock()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s)
+}
 
 func monitorKiosk(path string) {
 	for {
@@ -664,23 +722,30 @@ func fetchLatestRelease() (*ghRelease, error) {
 // ─── Check & apply update ────────────────────────────────────────────────────
 
 func checkAndApply(exeDir string) error {
+	setUpdateStage("checking", "Checking GitHub for a newer build…", "", "")
+
 	release, err := fetchLatestRelease()
 	if err != nil {
+		setUpdateStage("error", "Could not reach GitHub.", "", err.Error())
 		return fmt.Errorf("fetch release: %w", err)
 	}
 	if release == nil {
+		setUpdateStage("up_to_date", "No releases found on GitHub.", "", "")
 		log.Printf("Updater: no releases found")
 		return nil
 	}
 
-	// Tag format: "build-42"
 	latestBuild := 0
+	latestTag := release.TagName
 	if after, ok := strings.CutPrefix(release.TagName, "build-"); ok {
 		latestBuild, _ = strconv.Atoi(after)
 	}
 
 	currentBuild := currentBuildInt()
 	if latestBuild <= currentBuild {
+		setUpdateStage("up_to_date",
+			fmt.Sprintf("Already on the latest build (%s).", BuildNumber),
+			latestTag, "")
 		log.Printf("Updater: up to date (build %d)", currentBuild)
 		return nil
 	}
@@ -695,13 +760,15 @@ func checkAndApply(exeDir string) error {
 		}
 	}
 	if downloadURL == "" {
-		return fmt.Errorf("asset %q not found in release %s", bundleAsset, release.TagName)
+		e := fmt.Errorf("asset %q not found in release %s", bundleAsset, latestTag)
+		setUpdateStage("error", e.Error(), latestTag, e.Error())
+		return e
 	}
 
-	return applyUpdate(exeDir, downloadURL)
+	return applyUpdate(exeDir, downloadURL, latestTag)
 }
 
-func applyUpdate(exeDir, downloadURL string) error {
+func applyUpdate(exeDir, downloadURL, latestTag string) error {
 	updateMu.Lock()
 	updating = true
 	updateMu.Unlock()
@@ -712,10 +779,12 @@ func applyUpdate(exeDir, downloadURL string) error {
 	}()
 
 	// ── 1. Download bundle zip ───────────────────────────────────────────────
+	setUpdateStage("downloading", fmt.Sprintf("Downloading %s…", latestTag), latestTag, "")
 	log.Printf("Updater: downloading %s", downloadURL)
 
 	tmpZip, err := os.CreateTemp("", "shell-ads-bundle-*.zip")
 	if err != nil {
+		setUpdateStage("error", "Could not create temp file.", latestTag, err.Error())
 		return fmt.Errorf("create temp file: %w", err)
 	}
 	defer os.Remove(tmpZip.Name())
@@ -725,27 +794,35 @@ func applyUpdate(exeDir, downloadURL string) error {
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		setUpdateStage("error", "Download failed.", latestTag, err.Error())
 		return fmt.Errorf("download: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download HTTP %s", resp.Status)
+		e := fmt.Errorf("download HTTP %s", resp.Status)
+		setUpdateStage("error", e.Error(), latestTag, e.Error())
+		return e
 	}
 
 	if _, err := io.Copy(tmpZip, resp.Body); err != nil {
+		setUpdateStage("error", "Failed writing download.", latestTag, err.Error())
 		return fmt.Errorf("write zip: %w", err)
 	}
 	tmpZip.Close()
 	log.Printf("Updater: download complete")
 
 	// ── 2. Extract to temp dir ───────────────────────────────────────────────
+	setUpdateStage("applying", fmt.Sprintf("Installing %s…", latestTag), latestTag, "")
+
 	tmpDir, err := os.MkdirTemp("", "shell-ads-update-*")
 	if err != nil {
+		setUpdateStage("error", "Could not create temp dir.", latestTag, err.Error())
 		return fmt.Errorf("create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	if err := extractZip(tmpZip.Name(), tmpDir); err != nil {
+		setUpdateStage("error", "Failed extracting bundle.", latestTag, err.Error())
 		return fmt.Errorf("extract zip: %w", err)
 	}
 	log.Printf("Updater: extracted bundle")
@@ -757,29 +834,31 @@ func applyUpdate(exeDir, downloadURL string) error {
 	newKiosk := filepath.Join(tmpDir, "kiosk.exe")
 	if _, err := os.Stat(newKiosk); err == nil {
 		if err := copyFile(newKiosk, filepath.Join(exeDir, "kiosk.exe")); err != nil {
+			setUpdateStage("error", "Failed replacing kiosk.exe.", latestTag, err.Error())
 			return fmt.Errorf("replace kiosk.exe: %w", err)
 		}
 		log.Printf("Updater: kiosk.exe replaced")
 	}
 
-	// ── 4. Self-update launcher.exe (dashboard is embedded inside it) ────────
-	// The new launcher.exe already has the updated dashboard baked in —
-	// no separate dash/ folder to manage.
+	// ── 4. Self-update launcher.exe ──────────────────────────────────────────
 	newLauncher := filepath.Join(tmpDir, "launcher.exe")
 	launcherFile, err := os.Open(newLauncher)
 	if err != nil {
 		log.Printf("Updater: launcher.exe not in bundle — skipping self-update")
+		setUpdateStage("up_to_date", fmt.Sprintf("kiosk.exe updated to %s (launcher unchanged).", latestTag), latestTag, "")
 		return nil
 	}
 	defer launcherFile.Close()
 
-	log.Printf("Updater: applying self-update to launcher.exe (contains embedded dashboard)...")
+	log.Printf("Updater: applying self-update to launcher.exe…")
 	if err := selfupdate.Apply(launcherFile, selfupdate.Options{}); err != nil {
-		log.Printf("Updater: self-update failed: %v — continuing with current launcher", err)
+		log.Printf("Updater: self-update failed: %v — continuing", err)
+		setUpdateStage("error", "Self-update failed: "+err.Error(), latestTag, err.Error())
 		return nil
 	}
 
-	// Restart the now-updated binary
+	setUpdateStage("restarting", fmt.Sprintf("Restarting with %s…", latestTag), latestTag, "")
+	log.Printf("Updater: restarting launcher…")
 	log.Printf("Updater: restarting launcher...")
 	newCmd := exec.Command(os.Args[0], os.Args[1:]...)
 	newCmd.Stdout = os.Stdout

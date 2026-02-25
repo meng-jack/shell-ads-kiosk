@@ -54,6 +54,23 @@ export interface AdminStats {
   build: string;
 }
 
+export type UpdateStage =
+  | "idle"
+  | "checking"
+  | "up_to_date"
+  | "downloading"
+  | "applying"
+  | "restarting"
+  | "error";
+
+export interface UpdateStatus {
+  stage: UpdateStage;
+  message: string;
+  current: string;
+  latest: string;
+  error?: string;
+}
+
 export const adminApi = {
   login: (password: string) =>
     req<{ token: string }>("POST", "/api/admin/auth", { password }),
@@ -81,4 +98,8 @@ export const adminApi = {
   reload: () =>
     req<{ ok: boolean; activated: number }>("POST", "/api/admin/reload"),
   restartKiosk: () => req<{ ok: boolean }>("POST", "/api/admin/restart-kiosk"),
+  // self-update
+  triggerUpdate: () =>
+    req<{ ok: boolean; reason?: string }>("POST", "/api/admin/trigger-update"),
+  updateStatus: () => req<UpdateStatus>("GET", "/api/admin/update-status"),
 };

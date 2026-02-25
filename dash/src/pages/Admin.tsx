@@ -6,6 +6,8 @@ import {
   setToken,
   type AdminStats,
   type KioskAd,
+  type UpdateStatus,
+  type UpdateStage,
 } from "../api";
 import "./Admin.css";
 
@@ -296,6 +298,162 @@ function StatsBar({
   );
 }
 
+// ─── Update panel ─────────────────────────────────────────────────────────────
+
+const UPDATE_STAGE_LABEL: Record<UpdateStage, string> = {
+  idle: "Idle",
+  checking: "Checking…",
+  up_to_date: "Up to date",
+  downloading: "Downloading…",
+  applying: "Installing…",
+  restarting: "Restarting…",
+  error: "Error",
+};
+
+const UPDATE_STAGE_COLOR: Partial<Record<UpdateStage, string>> = {
+  up_to_date: "adm-stat-val--green",
+  error: "adm-stat-val--red",
+  restarting: "adm-stat-val--yellow",
+};
+
+const ACTIVE_STAGES: UpdateStage[] = [
+  "checking",
+  "downloading",
+  "applying",
+  "restarting",
+];
+
+function UpdatePanel() {
+  const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [polling, setPolling] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const pollRef = useRef<number>();
+  const reloadRef = useRef<number>();
+
+  // Poll update status while an update is active
+  const poll = useCallback(async () => {
+    try {
+      const s = await adminApi.updateStatus();
+      setStatus(s);
+      if (!ACTIVE_STAGES.includes(s.stage)) {
+        // Settled — stop polling
+        setPolling(false);
+        setBusy(false);
+        clearInterval(pollRef.current);
+        if (s.stage === "restarting") {
+          // Launcher is restarting — wait then reload the page
+          reloadRef.current = window.setTimeout(() => {
+            attemptReload(0);
+          }, 3000);
+        }
+      }
+    } catch {
+      // Launcher may have briefly gone away during restart — keep polling
+    }
+  }, []);
+
+  function attemptReload(attempt: number) {
+    // Ping the status endpoint; if the new launcher is back, reload
+    adminApi
+      .updateStatus()
+      .then(() => window.location.reload())
+      .catch(() => {
+        if (attempt < 20) {
+          reloadRef.current = window.setTimeout(
+            () => attemptReload(attempt + 1),
+            1500,
+          );
+        }
+      });
+  }
+
+  useEffect(() => {
+    if (polling) {
+      pollRef.current = window.setInterval(poll, 1500);
+      poll();
+    }
+    return () => clearInterval(pollRef.current);
+  }, [polling, poll]);
+
+  useEffect(
+    () => () => {
+      clearInterval(pollRef.current);
+      clearTimeout(reloadRef.current);
+    },
+    [],
+  );
+
+  async function handleTrigger() {
+    setBusy(true);
+    setStatus(null);
+    try {
+      const res = await adminApi.triggerUpdate();
+      if (!res.ok) {
+        setStatus({
+          stage: "error",
+          message: res.reason ?? "Could not start update.",
+          current: "",
+          latest: "",
+          error: res.reason,
+        });
+        setBusy(false);
+        return;
+      }
+      setPolling(true);
+    } catch (e: unknown) {
+      setStatus({
+        stage: "error",
+        message: e instanceof Error ? e.message : "Request failed.",
+        current: "",
+        latest: "",
+      });
+      setBusy(false);
+    }
+  }
+
+  const isActive = ACTIVE_STAGES.includes(status?.stage ?? "idle");
+  const colorClass = status ? (UPDATE_STAGE_COLOR[status.stage] ?? "") : "";
+
+  return (
+    <div className="adm-update-panel">
+      <div className="adm-update-left">
+        <span className="adm-stat-label">Update</span>
+        {status ? (
+          <span className={`adm-stat-val ${colorClass}`}>
+            {UPDATE_STAGE_LABEL[status.stage]}
+          </span>
+        ) : (
+          <span className="adm-stat-val" style={{ opacity: 0.3 }}>
+            —
+          </span>
+        )}
+      </div>
+
+      {status && (
+        <p
+          className={`adm-update-msg ${status.stage === "error" ? "adm-update-msg--error" : ""}`}
+        >
+          {status.message}
+          {status.stage === "restarting" && (
+            <span className="adm-update-reload-note">
+              {" "}
+              Page will reload automatically…
+            </span>
+          )}
+        </p>
+      )}
+
+      <button
+        className="adm-btn adm-btn--ghost adm-btn--sm"
+        onClick={handleTrigger}
+        disabled={busy || isActive}
+      >
+        {isActive ? UPDATE_STAGE_LABEL[status!.stage] : "Check for update"}
+      </button>
+    </div>
+  );
+}
+
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 function Dashboard({ onLogout }: { onLogout: () => void }) {
@@ -472,6 +630,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
       {/* Stats */}
       <StatsBar stats={stats} onRestart={restartKiosk} />
+
+      {/* Update */}
+      <UpdatePanel />
 
       {err && (
         <div className="adm-err-banner">
