@@ -4,7 +4,7 @@ echo.
 echo  [DEV ONLY] Starting Vite dev server on port 6969.
 echo  In production, launcher.exe serves the built dash/ folder.
 echo.
-echo  http://localhost:6969
+  echo  http://localhost:5173  (dev server — launcher runs on :6969)
 echo.
 
 where node >nul 2>&1
