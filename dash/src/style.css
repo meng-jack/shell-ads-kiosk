@@ -9,17 +9,16 @@
 
 :root {
     --red: #d74034;
-    --red-deep: #b83028;
-    --surface: rgba(255, 255, 255, 0.11);
-    --surface-hi: rgba(255, 255, 255, 0.17);
-    --surface-lo: rgba(255, 255, 255, 0.06);
     --cream: #ffffff;
-    --dim: rgba(255, 255, 255, 0.6);
-    --line: rgba(255, 255, 255, 0.2);
-    --line-hi: rgba(255, 255, 255, 0.35);
-    --shadow: 0 12px 40px rgba(0, 0, 0, 0.32), 0 2px 8px rgba(0, 0, 0, 0.2);
-    --shadow-sm: 0 3px 12px rgba(0, 0, 0, 0.22);
-    --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    --dim: rgba(255, 255, 255, 0.55);
+    --line: rgba(255, 255, 255, 0.22);
+    --line-hi: rgba(255, 255, 255, 0.38);
+    --surface: rgba(255, 255, 255, 0.1);
+    --surface-lo: rgba(255, 255, 255, 0.06);
+    --surface-hi: rgba(255, 255, 255, 0.16);
+    --shadow: none;
+    --shadow-sm: none;
+    --shadow-inset: none;
     --cream-08: rgba(255, 255, 255, 0.08);
     --font: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -29,18 +28,7 @@ body,
 #root {
     width: 100%;
     min-height: 100vh;
-    background:
-        radial-gradient(
-            ellipse at 25% 0%,
-            rgba(255, 120, 80, 0.35) 0%,
-            transparent 60%
-        ),
-        radial-gradient(
-            ellipse at 80% 100%,
-            rgba(120, 20, 10, 0.45) 0%,
-            transparent 55%
-        ),
-        linear-gradient(160deg, #e0483b 0%, #c93328 55%, #a82820 100%);
+    background: #d74034;
     color: var(--cream);
     font-family: var(--font);
 }

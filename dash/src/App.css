@@ -12,26 +12,23 @@
     font-weight: 800;
     letter-spacing: 3px;
     text-transform: uppercase;
-    opacity: 0.55;
-    margin-bottom: 10px;
+    opacity: 0.45;
+    margin-bottom: 8px;
 }
 
 .page-title {
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 800;
     letter-spacing: -0.5px;
-    margin-bottom: 40px;
+    margin-bottom: 36px;
     text-align: center;
 }
 
 .container {
     width: 100%;
-    max-width: 480px;
-    background: var(--surface);
-    border: 1px solid var(--line-hi);
-    border-radius: 18px;
-    padding: 36px 32px;
-    box-shadow: var(--shadow), var(--shadow-inset);
+    max-width: 460px;
+    border: 1px solid var(--line);
+    padding: 32px 28px;
     display: flex;
     flex-direction: column;
     gap: 0;

@@ -2,9 +2,9 @@
     display: flex;
     flex-direction: column;
     gap: 0;
-    margin-top: 24px;
+    margin-top: 28px;
     border-top: 1px solid var(--line);
-    padding-top: 20px;
+    padding-top: 18px;
 }
 
 .aq-heading {
@@ -13,7 +13,7 @@
     letter-spacing: 1.5px;
     text-transform: uppercase;
     color: var(--dim);
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .aq-row {
@@ -21,16 +21,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 11px 12px;
-    background: var(--surface-lo);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    margin-bottom: 6px;
-    box-shadow: var(--shadow-sm);
-    transition: background 0.12s;
-}
-.aq-row:hover {
-    background: var(--surface);
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
 }
 
 .aq-left {
@@ -63,20 +55,16 @@
     font-weight: 800;
     letter-spacing: 0.8px;
     text-transform: uppercase;
-    padding: 3px 8px;
-    border-radius: 5px;
     flex-shrink: 0;
+    opacity: 0.65;
 }
 
 .aq-status--pending {
-    background: rgba(253, 224, 71, 0.15);
-    color: rgba(253, 224, 71, 0.95);
+    color: var(--cream);
 }
 .aq-status--approved {
-    background: rgba(134, 239, 172, 0.15);
-    color: rgba(134, 239, 172, 0.95);
+    color: var(--cream);
 }
 .aq-status--rejected {
-    background: rgba(252, 165, 165, 0.15);
-    color: rgba(252, 165, 165, 0.95);
+    color: rgba(255, 180, 180, 0.9);
 }
