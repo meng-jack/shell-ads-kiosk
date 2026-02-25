@@ -2,21 +2,56 @@ import { useRef, useState } from "react";
 import type { AdType, PendingAd } from "../types";
 import "./SubmitPanel.css";
 
-const FILE_IO_MAX = 4 * 1024 * 1024 * 1024; // 4 GB — file.io limit
+const FILE_IO_MAX = 4 * 1024 * 1024 * 1024;
 
-const TYPES: { value: AdType; label: string; placeholder: string }[] = [
+// ── Per-type configuration ─────────────────────────────────────────────────
+const TYPE_CONFIG: Record<
+  AdType,
   {
-    value: "image",
+    label: string;
+    placeholder: string;
+    accept: string;
+    exts: string[];
+    mimes: string[];
+    description: string;
+    urlHint: string;
+    warning?: string;
+  }
+> = {
+  image: {
     label: "Image",
     placeholder: "https://example.com/banner.png",
+    accept: ".png,.jpg,.jpeg,.webp,.gif",
+    exts: ["png", "jpg", "jpeg", "webp", "gif"],
+    mimes: ["image/png", "image/jpeg", "image/webp", "image/gif"],
+    description:
+      "Displayed as a full-screen static image on the kiosk. Accepted formats: PNG, JPG / JPEG, WEBP, GIF.",
+    urlHint:
+      "Must be a direct public link ending in .png, .jpg, .jpeg, .webp, or .gif.",
   },
-  {
-    value: "video",
+  video: {
     label: "Video",
     placeholder: "https://example.com/clip.mp4",
+    accept: ".mp4,.webm",
+    exts: ["mp4", "webm"],
+    mimes: ["video/mp4", "video/webm"],
+    description:
+      "Played as a full-screen looping video on the kiosk. Accepted formats: MP4, WEBM.",
+    urlHint: "Must be a direct public link ending in .mp4 or .webm.",
   },
-  { value: "html", label: "HTML", placeholder: "https://example.com/ad.html" },
-];
+  html: {
+    label: "HTML",
+    placeholder: "https://example.com/ad.html",
+    accept: ".html,.htm",
+    exts: ["html", "htm"],
+    mimes: ["text/html"],
+    description:
+      "Rendered as a full-screen iframe on the kiosk. Accepted formats: HTML, HTM.",
+    urlHint: "Must be a direct public link to a .html or .htm file.",
+    warning:
+      "Bundle all CSS, JavaScript, and images into a single self-contained file — no relative local file references. External CDN links are fine.\n\nUploading malicious, deceptive, or harmful content will result in immediate permanent removal and may carry severe legal consequences.",
+  },
+};
 
 type InputMode = "upload" | "url";
 
@@ -67,6 +102,41 @@ function uploadToFileIo(
   });
 }
 
+// Validate a File against the allowed extensions + MIME types for a given type.
+function validateFileType(
+  file: File,
+  cfg: (typeof TYPE_CONFIG)[AdType],
+): string | null {
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const mime = file.type.toLowerCase();
+
+  const extOk = cfg.exts.includes(ext);
+  // Some browsers report empty MIME for .htm/.html — treat empty as ok if ext passes
+  const mimeOk = mime === "" || cfg.mimes.some((m) => mime.startsWith(m));
+
+  if (!extOk)
+    return `Invalid file type (.${ext || "unknown"}). Allowed: ${cfg.exts.map((e) => "." + e.toUpperCase()).join(", ")}.`;
+  if (!mimeOk)
+    return `File MIME type "${mime}" is not allowed for this format.`;
+  return null;
+}
+
+// Validate a URL's extension for the given type.
+function validateUrlExt(
+  url: string,
+  cfg: (typeof TYPE_CONFIG)[AdType],
+): string | null {
+  try {
+    const path = new URL(url).pathname.split("?")[0].toLowerCase();
+    const ext = path.split(".").pop() ?? "";
+    if (!cfg.exts.includes(ext))
+      return `URL must point to a ${cfg.exts.map((e) => "." + e.toUpperCase()).join(" / ")} file.`;
+  } catch {
+    // URL parse error caught later
+  }
+  return null;
+}
+
 export default function SubmitPanel({ onSubmit }: Props) {
   const [mode, setMode] = useState<InputMode>("upload");
   const [name, setName] = useState("");
@@ -76,13 +146,24 @@ export default function SubmitPanel({ onSubmit }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
 
-  // Upload-specific state
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const cfg = TYPE_CONFIG[type];
+
+  function switchType(t: AdType) {
+    setType(t);
+    // Reset upload state when switching types — a .png is not valid for video
+    setUploadFile(null);
+    setUploadedUrl(null);
+    setUploadPct(0);
+    setError(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null;
@@ -91,6 +172,14 @@ export default function SubmitPanel({ onSubmit }: Props) {
     setError(null);
     if (!file) {
       setUploadFile(null);
+      return;
+    }
+
+    const typeErr = validateFileType(file, cfg);
+    if (typeErr) {
+      setError(typeErr);
+      setUploadFile(null);
+      if (fileRef.current) fileRef.current.value = "";
       return;
     }
     if (file.size > FILE_IO_MAX) {
@@ -141,6 +230,10 @@ export default function SubmitPanel({ onSubmit }: Props) {
     } catch {
       return "Enter a valid URL (must start with https://).";
     }
+    if (mode === "url") {
+      const extErr = validateUrlExt(finalUrl, cfg);
+      if (extErr) return extErr;
+    }
     if (duration < 1 || duration > 120)
       return "Duration must be between 1 and 120 seconds.";
     return null;
@@ -177,21 +270,33 @@ export default function SubmitPanel({ onSubmit }: Props) {
 
   return (
     <form className="sp" onSubmit={handleSubmit} noValidate>
-      {/* ── Ad type ─────────────────────────────────────────────────── */}
+      {/* ── Ad type ───────────────────────────────────────────────── */}
       <div className="sp-type-row">
-        {TYPES.map((t) => (
+        {(Object.keys(TYPE_CONFIG) as AdType[]).map((t) => (
           <button
-            key={t.value}
+            key={t}
             type="button"
-            className={`sp-type${type === t.value ? " sp-type--on" : ""}`}
-            onClick={() => setType(t.value)}
+            className={`sp-type${type === t ? " sp-type--on" : ""}`}
+            onClick={() => switchType(t)}
           >
-            {t.label}
+            {TYPE_CONFIG[t].label}
           </button>
         ))}
       </div>
 
-      {/* ── Name ────────────────────────────────────────────────────── */}
+      {/* ── Type description ──────────────────────────────────────── */}
+      <p className="sp-desc">{cfg.description}</p>
+
+      {/* ── HTML warning ──────────────────────────────────────────── */}
+      {type === "html" && cfg.warning && (
+        <div className="sp-warning">
+          {cfg.warning.split("\n\n").map((para, i) => (
+            <p key={i}>{para}</p>
+          ))}
+        </div>
+      )}
+
+      {/* ── Name ──────────────────────────────────────────────────── */}
       <div className="sp-field">
         <label className="sp-label" htmlFor="sp-name">
           Name
@@ -207,7 +312,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
         />
       </div>
 
-      {/* ── Input mode switch ────────────────────────────────────────── */}
+      {/* ── Input mode switch ─────────────────────────────────────── */}
       <div className="sp-mode-row">
         <button
           type="button"
@@ -231,7 +336,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
         </button>
       </div>
 
-      {/* ── Upload panel ─────────────────────────────────────────────── */}
+      {/* ── Upload panel ──────────────────────────────────────────── */}
       {mode === "upload" && (
         <div className="sp-upload-zone">
           <p className="sp-upload-note">
@@ -245,7 +350,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
               file.io
             </a>{" "}
             — the file never passes through this server or the Cloudflare
-            tunnel. Max&nbsp;<strong>4 GB</strong>. Link expires after 14 days.
+            tunnel. Max <strong>4 GB</strong>. Link expires after 14 days.
           </p>
 
           {!uploadedUrl ? (
@@ -255,6 +360,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
                 type="file"
                 id="sp-file"
                 className="sp-file-input"
+                accept={cfg.accept}
                 onChange={handleFileChange}
               />
               <label
@@ -269,7 +375,12 @@ export default function SubmitPanel({ onSubmit }: Props) {
                     </span>
                   </>
                 ) : (
-                  <span>Click to choose a file</span>
+                  <>
+                    <span>Click to choose a file</span>
+                    <span className="sp-file-accept">
+                      {cfg.exts.map((e) => "." + e.toUpperCase()).join("  ")}
+                    </span>
+                  </>
                 )}
               </label>
 
@@ -335,7 +446,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
         </div>
       )}
 
-      {/* ── URL panel ────────────────────────────────────────────────── */}
+      {/* ── URL panel ─────────────────────────────────────────────── */}
       {mode === "url" && (
         <div className="sp-field">
           <label className="sp-label" htmlFor="sp-url">
@@ -345,18 +456,16 @@ export default function SubmitPanel({ onSubmit }: Props) {
             id="sp-url"
             className="sp-input"
             type="url"
-            placeholder={TYPES.find((t) => t.value === type)?.placeholder ?? ""}
+            placeholder={cfg.placeholder}
             value={url}
             spellCheck={false}
             onChange={(e) => setUrl(e.target.value)}
           />
-          <span className="sp-url-note">
-            Must be a publicly accessible direct link.
-          </span>
+          <span className="sp-url-note">{cfg.urlHint}</span>
         </div>
       )}
 
-      {/* ── Duration ─────────────────────────────────────────────────── */}
+      {/* ── Duration ──────────────────────────────────────────────── */}
       <div className="sp-field sp-field--row">
         <label className="sp-label" htmlFor="sp-dur">
           Duration (sec)
@@ -372,10 +481,10 @@ export default function SubmitPanel({ onSubmit }: Props) {
         />
       </div>
 
-      {/* ── Error ────────────────────────────────────────────────────── */}
+      {/* ── Error ─────────────────────────────────────────────────── */}
       {error && <p className="sp-error">⚠ {error}</p>}
 
-      {/* ── Submit ───────────────────────────────────────────────────── */}
+      {/* ── Submit ────────────────────────────────────────────────── */}
       <button
         className={`sp-btn${ok ? " sp-btn--ok" : ""}`}
         type="submit"
