@@ -98,6 +98,8 @@ export const adminApi = {
   reload: () =>
     req<{ ok: boolean; activated: number }>("POST", "/api/admin/reload"),
   restartKiosk: () => req<{ ok: boolean }>("POST", "/api/admin/restart-kiosk"),
+  kioskNext: () => req<{ ok: boolean }>("POST", "/api/admin/kiosk/next"),
+  kioskPrev: () => req<{ ok: boolean }>("POST", "/api/admin/kiosk/prev"),
   // self-update
   triggerUpdate: () =>
     req<{ ok: boolean; reason?: string }>("POST", "/api/admin/trigger-update"),

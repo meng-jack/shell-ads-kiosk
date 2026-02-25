@@ -115,6 +115,10 @@ var (
 	submittedAds []kioskAd
 	approvedAds  []kioskAd
 	forcedAds    []kioskAd
+
+	// navCmdCh carries "next" or "prev" commands from the admin dashboard to
+	// the kiosk. Buffered so the admin POST never blocks.
+	navCmdCh = make(chan string, 8)
 )
 
 // ─── Admin auth ───────────────────────────────────────────────────────────────
@@ -250,6 +254,7 @@ func serveDash() {
 	mux.HandleFunc("POST /api/submit-ads", handleSubmitAds)
 	mux.HandleFunc("POST /api/activate", handleActivate)
 	mux.HandleFunc("GET /api/playlist", handlePlaylist)
+	mux.HandleFunc("GET /api/kiosk/nav-poll", handleNavPoll) // kiosk long-polls this
 
 	// ── Admin auth ────────────────────────────────────────────────────────────
 	mux.HandleFunc("POST /api/admin/auth", handleAdminAuth)
@@ -266,6 +271,8 @@ func serveDash() {
 	mux.HandleFunc("POST /api/admin/clear", requireAdmin(handleAdminClearActive))
 	mux.HandleFunc("POST /api/admin/reload", requireAdmin(handleAdminReload))
 	mux.HandleFunc("POST /api/admin/restart-kiosk", requireAdmin(handleAdminRestartKiosk))
+	mux.HandleFunc("POST /api/admin/kiosk/next", requireAdmin(handleAdminKioskNext))
+	mux.HandleFunc("POST /api/admin/kiosk/prev", requireAdmin(handleAdminKioskPrev))
 	mux.HandleFunc("POST /api/admin/trigger-update", requireAdmin(handleAdminTriggerUpdate))
 	mux.HandleFunc("GET /api/admin/update-status", requireAdmin(handleAdminUpdateStatus))
 	mux.HandleFunc("DELETE /api/admin/logout", requireAdmin(handleAdminLogout))
@@ -576,7 +583,36 @@ func handleAdminRestartKiosk(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
-func handleAdminTriggerUpdate(w http.ResponseWriter, r *http.Request) {
+// handleNavPoll is called by the kiosk frontend every ~1 s.
+// It blocks up to 2 s waiting for a nav command, then returns.
+// Response: {"cmd":"next"}, {"cmd":"prev"}, or {"cmd":"none"}.
+func handleNavPoll(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	select {
+	case cmd := <-navCmdCh:
+		_ = json.NewEncoder(w).Encode(map[string]string{"cmd": cmd})
+	case <-time.After(2 * time.Second):
+		_ = json.NewEncoder(w).Encode(map[string]string{"cmd": "none"})
+	}
+}
+
+func handleAdminKioskNext(w http.ResponseWriter, r *http.Request) {
+	select {
+	case navCmdCh <- "next":
+	default: // channel full — drop silently
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func handleAdminKioskPrev(w http.ResponseWriter, r *http.Request) {
+	select {
+	case navCmdCh <- "prev":
+	default:
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if BuildNumber == "dev" {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "reason": "dev build — updates disabled"})

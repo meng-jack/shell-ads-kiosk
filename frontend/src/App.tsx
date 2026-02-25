@@ -290,7 +290,7 @@ function App() {
         e.preventDefault();
         fetch("http://localhost:6969/api/activate", { method: "POST" })
           .then(() => refreshPlaylist())
-          .catch(() => refreshPlaylist()); // still refresh even if launcher unreachable
+          .catch(() => refreshPlaylist());
         return;
       }
 
@@ -308,6 +308,34 @@ function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [devMode, navigate, refreshPlaylist]);
+
+  // ── Remote nav poll (admin dashboard ← → buttons) ─────────────────────────
+  // Long-polls the launcher every ~2 s. When the admin presses next/prev the
+  // launcher queues a command and the next poll picks it up immediately.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function poll() {
+      while (!cancelled) {
+        try {
+          const res = await fetch("http://localhost:6969/api/kiosk/nav-poll");
+          if (!cancelled && res.ok) {
+            const { cmd } = (await res.json()) as { cmd: string };
+            if (cmd === "next") navigate(1);
+            else if (cmd === "prev") navigate(-1);
+          }
+        } catch {
+          // Launcher unreachable — wait a bit before retrying
+          await new Promise((r) => window.setTimeout(r, 2000));
+        }
+      }
+    }
+
+    poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   // ── Dev-mode countdown ticker ──────────────────────────────────────────────
   useEffect(() => {

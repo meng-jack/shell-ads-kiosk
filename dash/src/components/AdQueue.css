@@ -2,21 +2,35 @@
     display: flex;
     flex-direction: column;
     gap: 0;
+    margin-top: 24px;
+    border-top: 1px solid var(--line);
+    padding-top: 20px;
 }
 
-.aq-divider {
-    height: 1px;
-    background: var(--line);
-    margin: 36px 0 8px;
+.aq-heading {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 12px;
 }
 
 .aq-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
-    padding: 14px 0;
-    border-bottom: 1px solid var(--line);
+    gap: 12px;
+    padding: 11px 12px;
+    background: var(--surface-lo);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    box-shadow: var(--shadow-sm);
+    transition: background 0.12s;
+}
+.aq-row:hover {
+    background: var(--surface);
 }
 
 .aq-left {
@@ -27,7 +41,7 @@
 }
 
 .aq-name {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
@@ -45,9 +59,24 @@
 }
 
 .aq-status {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 800;
     letter-spacing: 0.8px;
     text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 5px;
     flex-shrink: 0;
+}
+
+.aq-status--pending {
+    background: rgba(253, 224, 71, 0.15);
+    color: rgba(253, 224, 71, 0.95);
+}
+.aq-status--approved {
+    background: rgba(134, 239, 172, 0.15);
+    color: rgba(134, 239, 172, 0.95);
+}
+.aq-status--rejected {
+    background: rgba(252, 165, 165, 0.15);
+    color: rgba(252, 165, 165, 0.95);
 }

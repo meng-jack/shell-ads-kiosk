@@ -20,7 +20,7 @@ export default function AdQueue({ ads }: Props) {
 
   return (
     <div className="aq">
-      <div className="aq-divider" />
+      <p className="aq-heading">Submitted this session</p>
 
       {[...ads].reverse().map((ad) => (
         <div key={ad.id} className="aq-row">

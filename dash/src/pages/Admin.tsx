@@ -247,15 +247,44 @@ function AdRow({
 function StatsBar({
   stats,
   onRestart,
+  onNext,
+  onPrev,
 }: {
   stats: AdminStats | null;
   onRestart: () => void;
+  onNext: () => void;
+  onPrev: () => void;
 }) {
+  // Tick uptime locally every second so it counts up without waiting for
+  // the 5-second poll cycle to refresh the whole stats object.
+  const [extraSec, setExtraSec] = useState(0);
+  const baseTimeRef = useRef<{ uptimeSec: number; at: number } | null>(null);
+
+  useEffect(() => {
+    if (!stats?.kiosk.running) {
+      setExtraSec(0);
+      baseTimeRef.current = null;
+      return;
+    }
+    baseTimeRef.current = { uptimeSec: stats.kiosk.uptimeSec, at: Date.now() };
+    setExtraSec(0);
+    const id = window.setInterval(() => {
+      if (baseTimeRef.current) {
+        setExtraSec(Math.floor((Date.now() - baseTimeRef.current.at) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [stats]);
+
   if (!stats)
     return (
       <div className="adm-stats-bar adm-stats-bar--loading">Loading stats…</div>
     );
+
   const k = stats.kiosk;
+  const liveUptime =
+    k.running && baseTimeRef.current ? k.uptimeSec + extraSec : k.uptimeSec;
+
   return (
     <div className="adm-stats-bar">
       <div className="adm-stat">
@@ -270,7 +299,7 @@ function StatsBar({
         <>
           <div className="adm-stat">
             <span className="adm-stat-label">Uptime</span>
-            <span className="adm-stat-val">{fmtUptime(k.uptimeSec)}</span>
+            <span className="adm-stat-val">{fmtUptime(liveUptime)}</span>
           </div>
           <div className="adm-stat">
             <span className="adm-stat-label">PID</span>
@@ -286,7 +315,23 @@ function StatsBar({
         <span className="adm-stat-label">Build</span>
         <span className="adm-stat-val">{stats.build}</span>
       </div>
-      <div className="adm-stat adm-stat--push">
+      <div className="adm-stat adm-stat--push adm-stat--controls">
+        <div className="adm-nav-btns">
+          <button
+            className="adm-icon-btn"
+            onClick={onPrev}
+            title="Previous slide (←)"
+          >
+            ←
+          </button>
+          <button
+            className="adm-icon-btn"
+            onClick={onNext}
+            title="Next slide (→)"
+          >
+            →
+          </button>
+        </div>
         <button
           className="adm-btn adm-btn--ghost adm-btn--sm adm-btn--danger"
           onClick={onRestart}
@@ -601,6 +646,22 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  async function kioskNext() {
+    try {
+      await adminApi.kioskNext();
+    } catch {
+      showToast("Could not reach kiosk.");
+    }
+  }
+
+  async function kioskPrev() {
+    try {
+      await adminApi.kioskPrev();
+    } catch {
+      showToast("Could not reach kiosk.");
+    }
+  }
+
   async function logout() {
     try {
       await adminApi.logout();
@@ -629,7 +690,12 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       </div>
 
       {/* Stats */}
-      <StatsBar stats={stats} onRestart={restartKiosk} />
+      <StatsBar
+        stats={stats}
+        onRestart={restartKiosk}
+        onNext={kioskNext}
+        onPrev={kioskPrev}
+      />
 
       {/* Update */}
       <UpdatePanel />

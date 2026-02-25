@@ -8,17 +8,30 @@
 }
 
 .wordmark {
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 800;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
     text-transform: uppercase;
-    opacity: 0.5;
-    margin-bottom: 48px;
+    opacity: 0.55;
+    margin-bottom: 10px;
+}
+
+.page-title {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 40px;
+    text-align: center;
 }
 
 .container {
     width: 100%;
-    max-width: 460px;
+    max-width: 480px;
+    background: var(--surface);
+    border: 1px solid var(--line-hi);
+    border-radius: 18px;
+    padding: 36px 32px;
+    box-shadow: var(--shadow), var(--shadow-inset);
     display: flex;
     flex-direction: column;
     gap: 0;
