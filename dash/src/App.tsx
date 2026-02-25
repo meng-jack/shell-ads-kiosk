@@ -1,12 +1,12 @@
 import { Routes, Route } from "react-router-dom";
 import Submit from "./pages/Submit";
+import Admin from "./pages/Admin";
 
-// SECURITY: Admin dashboard removed from static build to prevent reverse engineering.
-// Admin functionality is served separately via authenticated API endpoints only.
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Submit />} />
+      <Route path="/admin" element={<Admin />} />
       <Route
         path="*"
         element={

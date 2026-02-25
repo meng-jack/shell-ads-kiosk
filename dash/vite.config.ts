@@ -6,7 +6,7 @@ export default defineConfig({
   appType: "spa",
   publicDir: "static",
   server: {
-    port: 5173, 
+    port: 5173,
     host: true,
     proxy: {
       "/api": {
