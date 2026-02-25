@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	githubOwner = "meng-jack"
-	githubRepo  = "shell-ads-kiosk"
-	assetName   = "shell-ads-kiosk-windows-x64.exe"
+	githubOwner = "exoad"
+	githubRepo  = "ShellNews-Bernard"
+	assetName   = "shell-ads-bundle-windows-x64.zip"
 )
 
 // UpdateInfo is returned to the frontend when checking for updates.
@@ -58,7 +58,7 @@ func (a *App) fetchLatestRelease() (*ghRelease, error) {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "shell-ads-kiosk-updater")
+	req.Header.Set("User-Agent", "ShellNews-Bernard-updater")
 
 	resp, err := a.client.Do(req)
 	if err != nil {
@@ -139,7 +139,7 @@ func (a *App) ApplyUpdate() error {
 	if err != nil {
 		return fmt.Errorf("create download request: %w", err)
 	}
-	dlReq.Header.Set("User-Agent", "shell-ads-kiosk-updater")
+	dlReq.Header.Set("User-Agent", "ShellNews-Bernard-updater")
 
 	dlResp, err := a.client.Do(dlReq)
 	if err != nil {

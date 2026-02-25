@@ -14,29 +14,38 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
+      # ── Checkout ─────────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
+      # ── Toolchain ────────────────────────────────────────────────────────────
+      - name: Set up Go 1.24
         uses: actions/setup-go@v5
         with:
           go-version: "1.24"
           cache: true
 
-      - name: Set up Node.js
+      - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+        shell: pwsh
+
+      # ── Determine build number ───────────────────────────────────────────────
       - name: Determine build number
         id: build_num
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
         run: |
           $provided = "${{ github.event.inputs.build_number }}".Trim()
-
           if ($provided -ne "") {
             $build_number = [int]$provided
             Write-Host "Using provided build number: $build_number"
@@ -44,80 +53,108 @@ jobs:
             $headers = @{
               "Authorization" = "Bearer $env:GH_TOKEN"
               "Accept"        = "application/vnd.github.v3+json"
-              "User-Agent"    = "shell-ads-kiosk-ci"
+              "User-Agent"    = "ShellNews-Bernard-ci"
             }
             try {
               $release = Invoke-RestMethod `
-                -Uri "https://api.github.com/repos/meng-jack/shell-ads-kiosk/releases/latest" `
+                -Uri "https://api.github.com/repos/exoad/ShellNews-Bernard/releases/latest" `
                 -Headers $headers `
                 -ErrorAction Stop
               if ($release.tag_name -match '^build-(\d+)$') {
-                $build_number = [int]$matches[1] + 1
+                $build_number = [int]$Matches[1] + 1
               } else {
                 $build_number = 1
               }
             } catch {
-              # 404 = no releases yet; any other error: start from 1
               $build_number = 1
             }
             Write-Host "Auto-incremented build number: $build_number"
           }
-
           echo "build_number=$build_number" >> $env:GITHUB_OUTPUT
-        shell: pwsh
+          echo "tag=build-$build_number"    >> $env:GITHUB_OUTPUT
 
-      # ── Wails bindings ──────────────────────────────────────────────────────
-      - name: Set up Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      # ── Build kiosk (Wails) ──────────────────────────────────────────────────
+      - name: Build Kiosk
         shell: pwsh
-
-      - name: Generate Wails TypeScript bindings
-        run: wails generate bindings
-        shell: pwsh
-
-      # ── Frontend ────────────────────────────────────────────────────────────
-      - name: Install frontend dependencies
-        run: npm ci
-        working-directory: frontend
-        shell: pwsh
-
-      - name: Build frontend
-        run: npm run build
-        working-directory: frontend
-        shell: pwsh
-
-      # ── Go binary ───────────────────────────────────────────────────────────
-      - name: Tidy Go modules (resolves go.sum for any new deps)
-        run: go mod tidy
-        shell: pwsh
-
-      - name: Build Go binary
         run: |
-          go build -v `
-            -tags "desktop,production" `
-            -ldflags "-X main.BuildNumber=${{ steps.build_num.outputs.build_number }} -H windowsgui" `
-            -o shell-ads-kiosk-windows-x64.exe
-        shell: pwsh
-        env:
-          GOOS: windows
-          GOARCH: amd64
-          CGO_ENABLED: 0
+          wails build `
+            -platform windows/amd64 `
+            -tags production `
+            -ldflags "-s -w -X main.BuildNumber=${{ steps.build_num.outputs.build_number }}"
+        # Output → build/bin/shell-ads-kiosk.exe
 
-      # ── GitHub Release ──────────────────────────────────────────────────────
-      # Uses the official GitHub CLI (pre-installed on all runners) to create the
-      # release and attach the binary in a single step.  The asset is always named
-      # shell-ads-kiosk-windows-x64.exe so the self-updater can locate it by a
-      # known, stable name regardless of build number.
-      - name: Create GitHub release and upload asset
+      # ── Build dashboard (React/TS) ───────────────────────────────────────────
+      - name: Install Dashboard dependencies
+        working-directory: dash
+        run: npm install
+
+      - name: Build Dashboard
+        working-directory: dash
+        run: npm run build
+        # Output → dash/dist/
+
+      # ── Embed dashboard into launcher ────────────────────────────────────────
+      # Copies dash/dist/* → launcher/static/ so go:embed bakes it into the binary.
+      # The mini PC needs zero Node/npm — the dashboard is frozen inside launcher.exe.
+      - name: Embed dashboard into launcher
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force launcher\static -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path launcher\static | Out-Null
+          Copy-Item -Recurse -Path dash\dist\* -Destination launcher\static\
+          Write-Host "Embedded files:"
+          Get-ChildItem launcher\static -Recurse | ForEach-Object {
+            Write-Host "  $($_.FullName)"
+          }
+
+      # ── Build launcher ───────────────────────────────────────────────────────
+      - name: Tidy Launcher modules
+        working-directory: launcher
+        run: go mod tidy
+
+      - name: Build Launcher
+        working-directory: launcher
+        shell: pwsh
+        run: |
+          go build `
+            -ldflags "-s -w -X main.BuildNumber=${{ steps.build_num.outputs.build_number }}" `
+            -o launcher.exe `
+            .
+        # Output → launcher/launcher.exe (dashboard embedded inside)
+
+      # ── Bundle ───────────────────────────────────────────────────────────────
+      - name: Bundle into zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bundle | Out-Null
+          Copy-Item build\bin\shell-ads-kiosk.exe bundle\kiosk.exe
+          Copy-Item launcher\launcher.exe         bundle\launcher.exe
+
+          Write-Host "`nBundle contents:"
+          Get-ChildItem bundle | ForEach-Object {
+            $mb = [math]::Round($_.Length / 1MB, 2)
+            Write-Host "  $($_.Name)  ($mb MB)"
+          }
+
+          Compress-Archive -Path bundle\* `
+            -DestinationPath shell-ads-bundle-windows-x64.zip -Force
+
+          $mb = [math]::Round((Get-Item shell-ads-bundle-windows-x64.zip).Length / 1MB, 2)
+          Write-Host "`nFinal zip: shell-ads-bundle-windows-x64.zip ($mb MB)"
+
+      # ── Create GitHub release ─────────────────────────────────────────────────
+      - name: Create GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
         run: |
-          $tag  = "build-${{ steps.build_num.outputs.build_number }}"
+          $tag  = "${{ steps.build_num.outputs.tag }}"
+          $num  = "${{ steps.build_num.outputs.build_number }}"
           $sha  = "${{ github.sha }}".Substring(0, 7)
           $ts   = (Get-Date -Format "yyyy-MM-dd HH:mm UTC")
 
           $notes = @"
-          ## Shell Ads Kiosk — Build ${{ steps.build_num.outputs.build_number }}
+          ## ShellNews Bernard — Build $num
 
           | | |
           |---|---|
@@ -125,23 +162,26 @@ jobs:
           | **Built**  | $ts |
           | **Branch** | ``${{ github.ref_name }}`` |
 
-          ### Download
-          ``shell-ads-kiosk-windows-x64.exe`` — standalone Windows x64 executable, no installer required.
+          ### Bundle contents
+          | File | Description |
+          |---|---|
+          | ``kiosk.exe`` | Wails ad-display kiosk (Startup Shell renderer) |
+          | ``launcher.exe`` | **Start this.** Launches kiosk, serves dashboard, auto-updates |
 
-          ### Running
-          ```cmd
-          :: Optional – point at your playlist server
-          set PLAYLIST_URL=https://api.example.com/ads/playlist.json
-          shell-ads-kiosk-windows-x64.exe
-          ```
+          > The dashboard (React app) is embedded inside ``launcher.exe`` — no Node.js or npm needed on the machine.
 
-          ### Self-update
-          The application checks for a newer build on startup and replaces itself silently.
-          Disabled when ``IS_DEV = true`` in ``config.go`` or when running without a stamped build number.
+          ### First-time setup
+          1. Extract ``shell-ads-bundle-windows-x64.zip`` to any folder (e.g. ``C:\kiosk\``)
+          2. Run ``launcher.exe`` — that's it
+          3. Dashboard → **http://localhost:6969** (tunnelled via cloudflared at shellnews.exoad.net)
+
+          ### Updates
+          ``launcher.exe`` checks for new builds every hour. When a newer build is found
+          it downloads the bundle, replaces ``kiosk.exe``, self-replaces ``launcher.exe``
+          (which re-embeds the latest dashboard), and restarts automatically.
           "@
 
           gh release create $tag `
-            --title "Build ${{ steps.build_num.outputs.build_number }}" `
+            --title "Build $num" `
             --notes $notes `
-            shell-ads-kiosk-windows-x64.exe
-        shell: pwsh
+            shell-ads-bundle-windows-x64.zip
