@@ -292,74 +292,149 @@ function App() {
   }, [ads, activeIndex]);
 
   // ── Screenshot capture for admin preview ──────────────────────────────────
-  // Capture a screenshot every 3 seconds and send to launcher for admin dashboard
+  // Captures a 640×360 thumbnail of whatever is currently playing and sends it
+  // to the launcher every 3 s.  All ad types are handled:
+  //   • startup-shell → faithfully drawn on canvas (no DOM capture needed)
+  //   • image / video  → drawImage from the live element
+  //   • html           → branded placeholder
   useEffect(() => {
-    const captureScreenshot = async () => {
-      try {
-        const canvas = document.createElement("canvas");
-        const viewport = document.querySelector(".ad-viewport") as HTMLElement;
-        if (!viewport) return;
+    const W = 640,
+      H = 360;
 
-        // Use html2canvas-like approach or native screenshot API if available
-        // For now, use a simpler approach: capture the viewport as canvas
-        const rect = viewport.getBoundingClientRect();
-        canvas.width = Math.min(rect.width, 1920);
-        canvas.height = Math.min(rect.height, 1080);
+    function txt(
+      ctx: CanvasRenderingContext2D,
+      t: string,
+      x: number,
+      y: number,
+      size: number,
+      weight: string,
+      alpha: number,
+    ) {
+      ctx.save();
+      ctx.font = `${weight} ${size}px "Nunito", sans-serif`;
+      ctx.fillStyle = `rgba(251,245,243,${alpha})`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(t, x, y);
+      ctx.restore();
+    }
 
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
+    const captureScreenshot = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-        // Draw a simple representation - in production, use proper screenshot library
-        // For video/image ads, we can capture the actual element
-        const adElement = viewport.querySelector("img, video") as
+      const ad = ads.length ? ads[activeIndex % ads.length] : undefined;
+
+      if (!ad || ad.type === "startup-shell") {
+        // ── Startup Shell: programmatic canvas copy ──────────────────────
+        ctx.fillStyle = "#d74034";
+        ctx.fillRect(0, 0, W, H);
+        const vig = ctx.createRadialGradient(
+          W / 2,
+          H / 2,
+          W * 0.15,
+          W / 2,
+          H / 2,
+          W * 0.72,
+        );
+        vig.addColorStop(0, "transparent");
+        vig.addColorStop(1, "rgba(0,0,0,0.28)");
+        ctx.fillStyle = vig;
+        ctx.fillRect(0, 0, W, H);
+
+        txt(ctx, "Startup Shell", W / 2, H / 2 - 36, 52, "800", 1.0);
+
+        ctx.save();
+        ctx.strokeStyle = "rgba(251,245,243,0.22)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(W / 2 - 70, H / 2 - 6);
+        ctx.lineTo(W / 2 + 70, H / 2 - 6);
+        ctx.stroke();
+        ctx.restore();
+
+        txt(
+          ctx,
+          "UMD's Home for Creators & Entrepreneurs",
+          W / 2,
+          H / 2 + 16,
+          13,
+          "400",
+          0.78,
+        );
+
+        const stats: [string, string][] = [
+          ["600+", "Members"],
+          ["300+", "Ventures"],
+          ["$2B+", "Venture Value"],
+        ];
+        stats.forEach(([num, label], i) => {
+          const sx = W / 2 + (i - 1) * 104;
+          txt(ctx, num, sx, H / 2 + 62, 18, "800", 0.95);
+          txt(ctx, label, sx, H / 2 + 82, 10, "700", 0.5);
+        });
+      } else if (ad.type === "image" || ad.type === "video") {
+        // ── Media: capture the live element ──────────────────────────────
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, W, H);
+        const viewport = document.querySelector(
+          ".ad-viewport",
+        ) as HTMLElement | null;
+        const el = viewport?.querySelector("img, video") as
           | HTMLImageElement
-          | HTMLVideoElement;
-        if (adElement) {
+          | HTMLVideoElement
+          | null;
+        if (el) {
           try {
-            ctx.fillStyle = "#000";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            if (adElement instanceof HTMLImageElement && adElement.complete) {
-              ctx.drawImage(adElement, 0, 0, canvas.width, canvas.height);
-            } else if (
-              adElement instanceof HTMLVideoElement &&
-              adElement.readyState >= 2
-            ) {
-              ctx.drawImage(adElement, 0, 0, canvas.width, canvas.height);
-            }
-
-            // Convert to JPEG blob
-            canvas.toBlob(
-              async (blob) => {
-                if (!blob) return;
-                try {
-                  await fetch("http://localhost:6969/api/kiosk/screenshot", {
-                    method: "POST",
-                    headers: { "Content-Type": "image/jpeg" },
-                    body: blob,
-                  });
-                } catch (e) {
-                  // Silent fail - launcher may not be available
-                }
-              },
-              "image/jpeg",
-              0.85,
-            );
-          } catch (e) {
-            // CORS or security error - skip this capture
+            if (
+              el instanceof HTMLImageElement &&
+              el.complete &&
+              el.naturalWidth > 0
+            )
+              ctx.drawImage(el, 0, 0, W, H);
+            else if (el instanceof HTMLVideoElement && el.readyState >= 2)
+              ctx.drawImage(el, 0, 0, W, H);
+          } catch {
+            /* tainted canvas / CORS — leave black */
           }
         }
-      } catch (e) {
-        // Silent fail
+      } else {
+        // ── HTML ad: branded placeholder ─────────────────────────────────
+        ctx.fillStyle = "#1a0a08";
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "rgba(215,64,52,0.25)";
+        ctx.fillRect(0, 0, W, H);
+        txt(ctx, ad.name || "HTML Ad", W / 2, H / 2 - 10, 18, "700", 0.7);
+        txt(ctx, "HTML content", W / 2, H / 2 + 12, 12, "600", 0.35);
       }
+
+      canvas.toBlob(
+        async (blob) => {
+          if (!blob) return;
+          try {
+            await fetch("http://localhost:6969/api/kiosk/screenshot", {
+              method: "POST",
+              headers: { "Content-Type": "image/jpeg" },
+              body: blob,
+            });
+          } catch {
+            /* launcher unreachable */
+          }
+        },
+        "image/jpeg",
+        0.82,
+      );
     };
 
-    // Capture screenshot every 3 seconds
     const interval = setInterval(captureScreenshot, 3000);
-    // Initial capture after 1 second
-    setTimeout(captureScreenshot, 1000);
-
-    return () => clearInterval(interval);
+    const initial = setTimeout(captureScreenshot, 800);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(initial);
+    };
   }, [ads, activeIndex]);
 
   // ── Dev-mode keyboard navigation (← prev, → next, D: toggle dev mode) ──────

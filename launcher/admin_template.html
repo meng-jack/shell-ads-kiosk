@@ -1,609 +1,1046 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - Startup Shell</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Admin — Startup Shell</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --red: #d74034;
+                --cream: #ffffff;
+                --dim: rgba(255, 255, 255, 0.55);
+                --line: rgba(255, 255, 255, 0.22);
+                --line-hi: rgba(255, 255, 255, 0.38);
+                --surface: rgba(255, 255, 255, 0.08);
+                --surface-lo: rgba(255, 255, 255, 0.05);
+                --surface-hi: rgba(255, 255, 255, 0.16);
+                --font:
+                    "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI",
+                    sans-serif;
+            }
+            *,
+            *::before,
+            *::after {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-            background: #0a0a0a;
-            color: #e0e0e0;
-            line-height: 1.6;
-        }
+            html,
+            body {
+                min-height: 100vh;
+                background: var(--red);
+                color: var(--cream);
+                font-family: var(--font);
+            }
 
-        .container {
-            max-width: 1600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
+            /* ─────────────────────────────────────────────────── Login ── */
+            .login-page {
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 48px 24px;
+                text-align: center;
+            }
+            .login-wordmark {
+                font-size: 11px;
+                font-weight: 800;
+                letter-spacing: 3px;
+                text-transform: uppercase;
+                opacity: 0.45;
+                margin-bottom: 10px;
+            }
+            .login-title {
+                font-size: 26px;
+                font-weight: 800;
+                letter-spacing: -0.5px;
+                margin-bottom: 6px;
+            }
+            .login-sub {
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--dim);
+                max-width: 280px;
+                line-height: 1.55;
+                margin-bottom: 32px;
+            }
+            .login-form {
+                width: 100%;
+                max-width: 300px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .login-input {
+                background: var(--surface);
+                border: 1px solid var(--line);
+                color: var(--cream);
+                font-family: var(--font);
+                font-size: 14px;
+                font-weight: 600;
+                padding: 10px 14px;
+                outline: none;
+                width: 100%;
+                transition: border-color 0.12s;
+            }
+            .login-input:focus {
+                border-color: var(--line-hi);
+            }
+            .login-input::placeholder {
+                color: var(--dim);
+            }
+            .login-btn {
+                background: var(--cream);
+                color: var(--red);
+                border: none;
+                font-family: var(--font);
+                font-size: 13px;
+                font-weight: 800;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+                padding: 11px;
+                cursor: pointer;
+                transition: opacity 0.12s;
+            }
+            .login-btn:hover {
+                opacity: 0.88;
+            }
+            .login-error {
+                font-size: 12px;
+                font-weight: 700;
+                color: rgba(255, 255, 255, 0.85);
+                background: rgba(0, 0, 0, 0.18);
+                padding: 8px 12px;
+                display: none;
+                line-height: 1.4;
+            }
 
-        .header {
-            background: #111;
-            padding: 20px;
-            border-bottom: 2px solid #222;
-            margin-bottom: 20px;
-        }
+            /* ───────────────────────────────────────────── Dashboard ── */
+            .dash-page {
+                min-height: 100vh;
+                padding: 52px 24px 80px;
+            }
 
-        .header h1 {
-            font-size: 24px;
-            color: #fff;
-            margin-bottom: 5px;
-        }
+            .dash-header {
+                text-align: center;
+                margin-bottom: 36px;
+            }
+            .dash-wordmark {
+                font-size: 11px;
+                font-weight: 800;
+                letter-spacing: 3px;
+                text-transform: uppercase;
+                opacity: 0.45;
+                margin-bottom: 8px;
+            }
+            .dash-title {
+                font-size: 32px;
+                font-weight: 800;
+                letter-spacing: -0.5px;
+            }
 
-        .header p {
-            color: #888;
-            font-size: 14px;
-        }
+            .dash-signout {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                z-index: 100;
+                background: none;
+                border: 1px solid var(--line);
+                color: var(--dim);
+                font-family: var(--font);
+                font-size: 11px;
+                font-weight: 700;
+                padding: 6px 12px;
+                cursor: pointer;
+                transition:
+                    border-color 0.12s,
+                    color 0.12s;
+            }
+            .dash-signout:hover {
+                border-color: var(--cream);
+                color: var(--cream);
+            }
 
-        .stats-bar {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
+            .content {
+                max-width: 860px;
+                margin: 0 auto;
+                display: flex;
+                flex-direction: column;
+                gap: 24px;
+            }
 
-        .stat-card {
-            background: #111;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #222;
-        }
+            /* ────────────────────────────────────────────────── Stats ── */
+            .stats-grid {
+                display: grid;
+                grid-template-columns: repeat(6, 1fr);
+                border: 1px solid var(--line);
+            }
+            @media (max-width: 680px) {
+                .stats-grid {
+                    grid-template-columns: repeat(3, 1fr);
+                }
+            }
+            .stat-cell {
+                background: var(--surface-lo);
+                padding: 14px 16px;
+                border-right: 1px solid var(--line);
+            }
+            .stat-cell:last-child {
+                border-right: none;
+            }
+            .stat-label {
+                font-size: 9px;
+                font-weight: 800;
+                letter-spacing: 1.5px;
+                text-transform: uppercase;
+                color: var(--dim);
+                margin-bottom: 6px;
+            }
+            .stat-value {
+                font-size: 22px;
+                font-weight: 800;
+                line-height: 1;
+            }
+            .stat-value--green {
+                color: rgba(134, 239, 172, 0.9);
+            }
+            .stat-value--red {
+                color: rgba(252, 165, 165, 0.9);
+            }
+            .stat-value--yellow {
+                color: rgba(253, 224, 71, 0.9);
+            }
+            .stat-value--sm {
+                font-size: 14px;
+                padding-top: 4px;
+            }
 
-        .stat-label {
-            font-size: 12px;
-            color: #888;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 5px;
-        }
+            /* ──────────────────────────────────────────────── Section ── */
+            .section {
+                border: 1px solid var(--line);
+            }
+            .section-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 12px 16px;
+                border-bottom: 1px solid var(--line);
+            }
+            .section-title {
+                font-size: 10px;
+                font-weight: 800;
+                letter-spacing: 1.5px;
+                text-transform: uppercase;
+            }
+            .section-head-right {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
 
-        .stat-value {
-            font-size: 24px;
-            font-weight: 600;
-            color: #fff;
-        }
+            .badge {
+                font-size: 10px;
+                font-weight: 800;
+                letter-spacing: 0.8px;
+                text-transform: uppercase;
+                padding: 2px 7px;
+                border: 1px solid transparent;
+            }
+            .badge--none {
+                color: var(--dim);
+                border-color: var(--line);
+            }
+            .badge--yellow {
+                color: rgba(253, 224, 71, 0.9);
+                border-color: rgba(253, 224, 71, 0.3);
+            }
+            .badge--green {
+                color: rgba(134, 239, 172, 0.9);
+                border-color: rgba(134, 239, 172, 0.3);
+            }
+            .badge--blue {
+                color: rgba(147, 197, 253, 0.9);
+                border-color: rgba(147, 197, 253, 0.3);
+            }
+            .badge--live {
+                color: var(--cream);
+                border-color: rgba(255, 255, 255, 0.35);
+                background: rgba(255, 255, 255, 0.08);
+            }
 
-        .stat-value.green { color: #4ade80; }
-        .stat-value.red { color: #f87171; }
-        .stat-value.yellow { color: #fbbf24; }
+            /* ─────────────────────────────────────────────── Preview ── */
+            .preview-wrap {
+                padding: 16px;
+            }
+            .preview-img {
+                width: 100%;
+                height: auto;
+                display: block;
+                border: 1px solid var(--line);
+                background: rgba(0, 0, 0, 0.25);
+            }
+            .preview-empty {
+                width: 100%;
+                aspect-ratio: 16/9;
+                border: 1px solid var(--line);
+                background: rgba(0, 0, 0, 0.18);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+            }
+            .preview-empty-label {
+                font-size: 12px;
+                font-weight: 700;
+                opacity: 0.3;
+            }
+            .preview-empty-hint {
+                font-size: 10px;
+                font-weight: 600;
+                opacity: 0.2;
+            }
 
-        .section {
-            background: #111;
-            border: 1px solid #222;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
+            .preview-ad-info {
+                margin-top: 12px;
+                padding-top: 12px;
+                border-top: 1px solid var(--line);
+            }
+            .preview-ad-name {
+                font-size: 13px;
+                font-weight: 700;
+                margin-bottom: 5px;
+            }
+            .preview-ad-meta {
+                font-size: 11px;
+                color: var(--dim);
+                line-height: 1.7;
+            }
+            .preview-time {
+                font-size: 10px;
+                font-weight: 600;
+                opacity: 0.28;
+                margin-top: 8px;
+            }
 
-        .section-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 15px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid #222;
-        }
+            /* ───────────────────────────────────────────────── Ad rows ── */
+            .ad-row {
+                display: flex;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 11px 16px;
+                border-bottom: 1px solid var(--line);
+            }
+            .ad-row:last-child {
+                border-bottom: none;
+            }
+            .ad-row--removed {
+                opacity: 0.35;
+            }
 
-        .section-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #fff;
-        }
+            .ad-num {
+                font-size: 11px;
+                font-weight: 800;
+                color: var(--dim);
+                min-width: 20px;
+                padding-top: 2px;
+            }
+            .ad-left {
+                flex: 1;
+                min-width: 0;
+            }
+            .ad-name {
+                font-size: 13px;
+                font-weight: 700;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                margin-bottom: 4px;
+            }
+            .ad-meta {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-wrap: wrap;
+            }
 
-        .badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-        }
+            .ad-type {
+                font-size: 10px;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                padding: 1px 4px;
+            }
+            .ad-type--image {
+                color: #93c5fd;
+            }
+            .ad-type--video {
+                color: #c4b5fd;
+            }
+            .ad-type--html {
+                color: #6ee7b7;
+            }
 
-        .badge.green { background: #065f46; color: #4ade80; }
-        .badge.yellow { background: #78350f; color: #fbbf24; }
-        .badge.red { background: #7f1d1d; color: #f87171; }
+            .ad-dur {
+                font-size: 11px;
+                font-weight: 700;
+                opacity: 0.4;
+            }
+            .ad-sub {
+                font-size: 11px;
+                font-weight: 600;
+                opacity: 0.5;
+            }
+            .ad-date {
+                font-size: 10px;
+                font-weight: 600;
+                opacity: 0.28;
+            }
 
-        .btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
+            .ad-right {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-shrink: 0;
+            }
 
-        .btn-primary {
-            background: #3b82f6;
-            color: white;
-        }
+            /* ────────────────────────────────────────────────── Buttons ── */
+            .btn {
+                background: none;
+                border: 1px solid var(--line);
+                color: var(--dim);
+                font-family: var(--font);
+                font-size: 11px;
+                font-weight: 700;
+                padding: 4px 10px;
+                cursor: pointer;
+                transition:
+                    border-color 0.12s,
+                    color 0.12s;
+                white-space: nowrap;
+            }
+            .btn:hover {
+                border-color: var(--line-hi);
+                color: var(--cream);
+            }
+            .btn:disabled {
+                opacity: 0.25;
+                cursor: not-allowed;
+                pointer-events: none;
+            }
 
-        .btn-primary:hover {
-            background: #2563eb;
-        }
+            .btn--green {
+                color: rgba(134, 239, 172, 0.85);
+                border-color: rgba(134, 239, 172, 0.3);
+            }
+            .btn--green:hover {
+                color: rgba(134, 239, 172, 1);
+                border-color: rgba(134, 239, 172, 0.6);
+            }
 
-        .btn-danger {
-            background: #dc2626;
-            color: white;
-        }
+            .btn--red {
+                color: rgba(252, 165, 165, 0.85);
+                border-color: rgba(252, 165, 165, 0.25);
+            }
+            .btn--red:hover {
+                color: rgba(252, 165, 165, 1);
+                border-color: rgba(252, 165, 165, 0.5);
+            }
 
-        .btn-danger:hover {
-            background: #b91c1c;
-        }
+            .btn--blue {
+                color: rgba(147, 197, 253, 0.85);
+                border-color: rgba(147, 197, 253, 0.25);
+            }
+            .btn--blue:hover {
+                color: rgba(147, 197, 253, 1);
+                border-color: rgba(147, 197, 253, 0.5);
+            }
 
-        .btn-ghost {
-            background: transparent;
-            border: 1px solid #333;
-            color: #aaa;
-        }
+            .btn--sm {
+                font-size: 10px;
+                padding: 3px 8px;
+            }
 
-        .btn-ghost:hover {
-            border-color: #555;
-            color: #fff;
-        }
+            /* ──────────────────────────────────────── Controls / empty ── */
+            .controls-bar {
+                padding: 10px 16px;
+                border-top: 1px solid var(--line);
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+            .controls-label {
+                font-size: 9px;
+                font-weight: 800;
+                letter-spacing: 1.5px;
+                text-transform: uppercase;
+                opacity: 0.35;
+                margin-right: auto;
+            }
+            .empty-state {
+                padding: 28px 16px;
+                font-size: 12px;
+                font-weight: 700;
+                opacity: 0.28;
+                text-align: center;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="root"></div>
 
-        .ad-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
+        <script>
+            const API = "";
+            let token = sessionStorage.getItem("admin_token");
+            let dashInterval = null;
+            let screenshotInterval = null;
+            let currentState = { active: [], approved: [], submitted: [] };
 
-        .ad-item {
-            background: #0a0a0a;
-            border: 1px solid #222;
-            border-radius: 6px;
-            padding: 15px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
+            init();
 
-        .ad-index {
-            font-weight: 700;
-            color: #666;
-            min-width: 30px;
-        }
-
-        .ad-info {
-            flex: 1;
-        }
-
-        .ad-name {
-            font-weight: 600;
-            color: #fff;
-            margin-bottom: 4px;
-        }
-
-        .ad-meta {
-            font-size: 12px;
-            color: #888;
-        }
-
-        .ad-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        .icon-btn {
-            width: 32px;
-            height: 32px;
-            border: 1px solid #333;
-            background: transparent;
-            color: #aaa;
-            border-radius: 6px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-        }
-
-        .icon-btn:hover {
-            border-color: #555;
-            color: #fff;
-        }
-
-        .icon-btn:disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-        }
-
-        .preview-section {
-            background: #111;
-            border: 1px solid #222;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-
-        .preview-img {
-            width: 100%;
-            max-width: 600px;
-            height: auto;
-            border-radius: 8px;
-            border: 1px solid #333;
-            margin-bottom: 15px;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #666;
-        }
-
-        .empty {
-            text-align: center;
-            padding: 40px;
-            color: #666;
-            font-style: italic;
-        }
-
-        .logout-btn {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-        }
-    </style>
-</head>
-<body>
-    <button class="btn btn-ghost logout-btn" onclick="logout()">Sign Out</button>
-
-    <div class="container">
-        <div class="header">
-            <h1>Startup Shell Admin Dashboard</h1>
-            <p>Manage kiosk advertisements and monitor system status</p>
-        </div>
-
-        <div id="stats"></div>
-        <div id="preview"></div>
-        <div id="submitted"></div>
-        <div id="active"></div>
-    </div>
-
-    <script>
-        const API_BASE = '';
-        let authToken = sessionStorage.getItem('admin_token');
-
-        if (!authToken) {
-            showLogin();
-        } else {
-            loadDashboard();
-        }
-
-        function showLogin() {
-            document.body.innerHTML = `
-                <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh;">
-                    <div style="background: #111; padding: 40px; border-radius: 12px; border: 1px solid #222; width: 100%; max-width: 400px;">
-                        <h2 style="margin-bottom: 10px;">Admin Access</h2>
-                        <p style="color: #888; margin-bottom: 30px;">Startup Shell Kiosk Dashboard</p>
-                        <input type="password" id="password" placeholder="Password"
-                               style="width: 100%; padding: 12px; background: #0a0a0a; border: 1px solid #333; border-radius: 6px; color: #fff; margin-bottom: 15px;"
-                               onkeypress="if(event.key==='Enter') login()">
-                        <button class="btn btn-primary" style="width: 100%;" onclick="login()">Sign In</button>
-                        <p id="error" style="color: #f87171; margin-top: 15px; display: none;"></p>
-                    </div>
-                </div>
-            `;
-        }
-
-        async function login() {
-            const password = document.getElementById('password').value;
-            try {
-                const res = await fetch(API_BASE + '/api/admin/auth', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({password})
-                });
-                if (!res.ok) {
-                    document.getElementById('error').style.display = 'block';
-                    document.getElementById('error').textContent = 'Wrong password';
+            // ─────────────────────────────────────────────────── Init ──
+            function init() {
+                if (!token) {
+                    renderLogin();
                     return;
                 }
-                const data = await res.json();
-                authToken = data.token;
-                sessionStorage.setItem('admin_token', authToken);
-                window.location.reload();
-            } catch (e) {
-                document.getElementById('error').style.display = 'block';
-                document.getElementById('error').textContent = 'Connection error';
+                renderDash();
+                startPolling();
             }
-        }
 
-        async function logout() {
-            try {
-                await fetch(API_BASE + '/api/admin/logout', {
-                    method: 'DELETE',
-                    headers: {'Authorization': `Bearer ${authToken}`}
-                });
-            } catch (e) {}
-            sessionStorage.removeItem('admin_token');
-            window.location.reload();
-        }
+            // ───────────────────────────────────────────────── Login ──
+            function renderLogin() {
+                document.getElementById("root").innerHTML = `
+        <div class="login-page">
+          <p class="login-wordmark">Startup Shell</p>
+          <p class="login-title">Admin Dashboard</p>
+          <p class="login-sub">Sign in to manage kiosk ads and monitor system status.</p>
+          <div class="login-form">
+            <input class="login-input" type="password" id="pw" placeholder="Password"
+                   onkeydown="if(event.key==='Enter')doLogin()">
+            <button class="login-btn" onclick="doLogin()">Sign In</button>
+            <div class="login-error" id="login-err"></div>
+          </div>
+        </div>`;
+                document.getElementById("pw").focus();
+            }
 
-        async function apiCall(endpoint, options = {}) {
-            const res = await fetch(API_BASE + endpoint, {
-                ...options,
-                headers: {
-                    ...options.headers,
-                    'Authorization': `Bearer ${authToken}`
+            async function doLogin() {
+                const pw = document.getElementById("pw").value;
+                const errEl = document.getElementById("login-err");
+                errEl.style.display = "none";
+                try {
+                    const res = await fetch(API + "/api/admin/auth", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ password: pw }),
+                    });
+                    if (!res.ok) {
+                        errEl.textContent = "Incorrect password.";
+                        errEl.style.display = "block";
+                        return;
+                    }
+                    const data = await res.json();
+                    token = data.token;
+                    sessionStorage.setItem("admin_token", token);
+                    renderDash();
+                    startPolling();
+                } catch {
+                    errEl.textContent =
+                        "Connection error — is the launcher running?";
+                    errEl.style.display = "block";
                 }
-            });
-            if (res.status === 401) {
-                sessionStorage.removeItem('admin_token');
-                window.location.reload();
-                throw new Error('Unauthorized');
-            }
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return res.json();
-        }
-
-        async function loadDashboard() {
-            try {
-                const [stats, state, screenshot] = await Promise.all([
-                    apiCall('/api/admin/stats'),
-                    apiCall('/api/admin/state'),
-                    apiCall('/api/admin/screenshot')
-                ]);
-                renderStats(stats);
-                renderPreview(screenshot);
-                renderSubmitted(state.submitted);
-                renderActive(state.active);
-            } catch (e) {
-                console.error(e);
-            }
-            // Refresh every 5 seconds
-            setTimeout(loadDashboard, 5000);
-        }
-
-        function renderStats(stats) {
-            const k = stats.kiosk;
-            document.getElementById('stats').innerHTML = `
-                <div class="stats-bar">
-                    <div class="stat-card">
-                        <div class="stat-label">Kiosk Status</div>
-                        <div class="stat-value ${k.running ? 'green' : 'red'}">${k.running ? 'Running' : 'Stopped'}</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Active Ads</div>
-                        <div class="stat-value">${stats.playlist.active}</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Pending Review</div>
-                        <div class="stat-value ${stats.playlist.submitted > 0 ? 'yellow' : ''}">${stats.playlist.submitted}</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Kiosk Restarts</div>
-                        <div class="stat-value">${k.restarts}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderPreview(screenshot) {
-            if (!screenshot.hasScreenshot) {
-                document.getElementById('preview').innerHTML = `
-                    <div class="preview-section">
-                        <h3 class="section-title">Current Kiosk Display</h3>
-                        <p class="empty">No preview available</p>
-                    </div>
-                `;
-                return;
             }
 
-            const ad = screenshot.currentAd;
-            const adInfo = ad ? `
-                <div style="margin-top: 15px; padding: 15px; background: #0a0a0a; border-radius: 6px;">
-                    <div style="font-weight: 600; margin-bottom: 8px;">${ad.name}</div>
-                    <div style="font-size: 13px; color: #888;">
-                        <div><strong>Type:</strong> ${ad.type} | <strong>Duration:</strong> ${(ad.durationMs/1000).toFixed(0)}s</div>
-                        ${ad.submitterName ? `<div style="margin-top: 5px;"><strong>Submitted by:</strong> ${ad.submitterName} (${ad.submitterEmail})</div>` : ''}
-                        ${ad.submittedAt ? `<div><strong>Submitted:</strong> ${new Date(ad.submittedAt).toLocaleString()}</div>` : ''}
-                        ${ad.approvedAt ? `<div><strong>Approved:</strong> ${new Date(ad.approvedAt).toLocaleString()}</div>` : ''}
-                    </div>
-                </div>
-            ` : '<p style="color: #888; margin-top: 10px;">No ad currently playing</p>';
-
-            document.getElementById('preview').innerHTML = `
-                <div class="preview-section">
-                    <h3 class="section-title">Current Kiosk Display</h3>
-                    <img src="data:image/jpeg;base64,${btoa(String.fromCharCode.apply(null, new Uint8Array(screenshot.screenshot)))}"
-                         alt="Kiosk Preview" class="preview-img">
-                    ${adInfo}
-                    <p style="font-size: 12px; color: #666; margin-top: 10px;">
-                        Last updated: ${new Date(screenshot.screenshotTime).toLocaleString()}
-                    </p>
-                </div>
-            `;
-        }
-
-        function renderSubmitted(ads) {
-            if (!ads || ads.length === 0) {
-                document.getElementById('submitted').innerHTML = `
-                    <div class="section">
-                        <div class="section-header">
-                            <h3 class="section-title">Submitted Ads <span class="badge green">0</span></h3>
-                        </div>
-                        <p class="empty">No pending submissions</p>
-                    </div>
-                `;
-                return;
-            }
-
-            const list = ads.map(ad => `
-                <div class="ad-item">
-                    <div class="ad-index">•</div>
-                    <div class="ad-info">
-                        <div class="ad-name">${ad.name}</div>
-                        <div class="ad-meta">
-                            ${ad.type} | ${(ad.durationMs/1000).toFixed(0)}s
-                            ${ad.submitterName ? ` | ${ad.submitterName}` : ''}
-                            ${ad.submittedAt ? ` | ${new Date(ad.submittedAt).toLocaleString()}` : ''}
-                        </div>
-                    </div>
-                    <div class="ad-actions">
-                        <button class="btn btn-primary" onclick="approveAd('${ad.id}')">Approve</button>
-                        <button class="btn btn-danger" onclick="rejectAd('${ad.id}')">Reject</button>
-                    </div>
-                </div>
-            `).join('');
-
-            document.getElementById('submitted').innerHTML = `
-                <div class="section">
-                    <div class="section-header">
-                        <h3 class="section-title">Submitted Ads <span class="badge yellow">${ads.length}</span></h3>
-                        <button class="btn btn-ghost" onclick="approveAll()">Approve All</button>
-                    </div>
-                    <div class="ad-list">${list}</div>
-                </div>
-            `;
-        }
-
-        function renderActive(ads) {
-            if (!ads || ads.length === 0) {
-                document.getElementById('active').innerHTML = `
-                    <div class="section">
-                        <div class="section-header">
-                            <h3 class="section-title">Active Ads <span class="badge green">0</span></h3>
-                        </div>
-                        <p class="empty">No active ads</p>
-                    </div>
-                `;
-                return;
-            }
-
-            const list = ads.map((ad, i) => `
-                <div class="ad-item">
-                    <div class="ad-index">${i + 1}</div>
-                    <div class="ad-info">
-                        <div class="ad-name">${ad.name}</div>
-                        <div class="ad-meta">
-                            ${ad.type} | ${(ad.durationMs/1000).toFixed(0)}s
-                            ${ad.submitterName ? ` | ${ad.submitterName}` : ''}
-                        </div>
-                    </div>
-                    <div class="ad-actions">
-                        <button class="icon-btn" onclick="moveUp(${i})" ${i === 0 ? 'disabled' : ''}>↑</button>
-                        <button class="icon-btn" onclick="moveDown(${i})" ${i === ads.length - 1 ? 'disabled' : ''}>↓</button>
-                        <button class="btn btn-danger" onclick="deleteActive('${ad.id}')">Delete</button>
-                    </div>
-                </div>
-            `).join('');
-
-            document.getElementById('active').innerHTML = `
-                <div class="section">
-                    <div class="section-header">
-                        <h3 class="section-title">Active Ads <span class="badge green">${ads.length}</span></h3>
-                        <div>
-                            <button class="btn btn-ghost" onclick="kioskPrev()">← Prev</button>
-                            <button class="btn btn-ghost" onclick="kioskNext()">Next →</button>
-                            <button class="btn btn-danger" onclick="restartKiosk()">Restart Kiosk</button>
-                        </div>
-                    </div>
-                    <div class="ad-list">${list}</div>
-                </div>
-            `;
-        }
-
-        async function approveAd(id) {
-            try {
-                await apiCall(`/api/admin/submitted/${id}/approve`, {method: 'POST'});
-                loadDashboard();
-            } catch (e) {
-                alert('Error approving ad');
-            }
-        }
-
-        async function rejectAd(id) {
-            if (!confirm('Reject this ad?')) return;
-            try {
-                await apiCall(`/api/admin/submitted/${id}`, {method: 'DELETE'});
-                loadDashboard();
-            } catch (e) {
-                alert('Error rejecting ad');
-            }
-        }
-
-        async function approveAll() {
-            try {
-                const state = await apiCall('/api/admin/state');
-                for (const ad of state.submitted) {
-                    await apiCall(`/api/admin/submitted/${ad.id}/approve`, {method: 'POST'});
+            // ─────────────────────────────────────────────────── API ──
+            async function api(method, path, body) {
+                const opts = {
+                    method,
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                };
+                if (body != null) opts.body = JSON.stringify(body);
+                const res = await fetch(API + path, opts);
+                if (res.status === 401) {
+                    doLogout();
+                    throw new Error("unauthorized");
                 }
-                loadDashboard();
-            } catch (e) {
-                alert('Error approving ads');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json();
             }
-        }
 
-        async function deleteActive(id) {
-            if (!confirm('Delete this ad?')) return;
-            try {
-                await apiCall(`/api/admin/active/${id}`, {method: 'DELETE'});
-                loadDashboard();
-            } catch (e) {
-                alert('Error deleting ad');
+            // ──────────────────────────────────────────────── Logout ──
+            async function doLogout() {
+                stopPolling();
+                try {
+                    await api("DELETE", "/api/admin/logout");
+                } catch {}
+                sessionStorage.removeItem("admin_token");
+                token = null;
+                renderLogin();
             }
-        }
 
-        async function moveUp(index) {
-            try {
-                const state = await apiCall('/api/admin/state');
-                const ids = state.active.map(a => a.id);
-                [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]];
-                await apiCall('/api/admin/reorder', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ids})
+            // ─────────────────────────────────────────────── Polling ──
+            function startPolling() {
+                loadAll();
+                loadScreenshot();
+                dashInterval = setInterval(loadAll, 5000);
+                screenshotInterval = setInterval(loadScreenshot, 3000);
+            }
+
+            function stopPolling() {
+                clearInterval(dashInterval);
+                clearInterval(screenshotInterval);
+                dashInterval = screenshotInterval = null;
+            }
+
+            async function loadAll() {
+                try {
+                    const [stats, state] = await Promise.all([
+                        api("GET", "/api/admin/stats"),
+                        api("GET", "/api/admin/state"),
+                    ]);
+                    currentState = state;
+                    renderStats(stats);
+                    renderSubmitted(state.submitted || []);
+                    renderApproved(state.approved || []);
+                    renderActive(state.active || []);
+                } catch {}
+            }
+
+            async function loadScreenshot() {
+                try {
+                    const shot = await api("GET", "/api/admin/screenshot");
+                    renderPreview(shot);
+                } catch {}
+            }
+
+            // ──────────────────────────────────────── Dashboard shell ──
+            function renderDash() {
+                document.getElementById("root").innerHTML = `
+        <button class="dash-signout" onclick="doLogout()">Sign Out</button>
+        <div class="dash-page">
+          <div class="dash-header">
+            <p class="dash-wordmark">Startup Shell</p>
+            <h1 class="dash-title">Admin Dashboard</h1>
+          </div>
+          <div class="content">
+            <div id="stats-wrap"></div>
+            <div id="preview-wrap"></div>
+            <div id="submitted-wrap"></div>
+            <div id="approved-wrap"></div>
+            <div id="active-wrap"></div>
+          </div>
+        </div>`;
+            }
+
+            // ───────────────────────────────────────────────── Stats ──
+            function renderStats(s) {
+                const k = s.kiosk;
+                let uptime = "—";
+                if (k.running && k.uptimeSec > 0) {
+                    if (k.uptimeSec >= 3600) {
+                        uptime = `${Math.floor(k.uptimeSec / 3600)}h ${Math.floor((k.uptimeSec % 3600) / 60)}m`;
+                    } else if (k.uptimeSec >= 60) {
+                        uptime = `${Math.floor(k.uptimeSec / 60)}m ${Math.floor(k.uptimeSec % 60)}s`;
+                    } else {
+                        uptime = `${Math.floor(k.uptimeSec)}s`;
+                    }
+                }
+                const el = document.getElementById("stats-wrap");
+                if (!el) return;
+                el.innerHTML = `
+        <div class="stats-grid">
+          <div class="stat-cell">
+            <div class="stat-label">Kiosk</div>
+            <div class="stat-value ${k.running ? "stat-value--green" : "stat-value--red"}">${k.running ? "Live" : "Down"}</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">Uptime</div>
+            <div class="stat-value stat-value--sm" style="padding-top:6px">${uptime}</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">Active</div>
+            <div class="stat-value">${s.playlist.active}</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">Approved</div>
+            <div class="stat-value">${s.playlist.approved}</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">Pending</div>
+            <div class="stat-value ${s.playlist.submitted > 0 ? "stat-value--yellow" : ""}">${s.playlist.submitted}</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">Build</div>
+            <div class="stat-value stat-value--sm" style="padding-top:6px">${s.build}</div>
+          </div>
+        </div>`;
+            }
+
+            // ──────────────────────────────────────────────── Preview ──
+            function renderPreview(shot) {
+                const el = document.getElementById("preview-wrap");
+                if (!el) return;
+
+                if (!shot || !shot.hasScreenshot) {
+                    el.innerHTML = `
+          <div class="section">
+            <div class="section-head">
+              <span class="section-title">Live Kiosk Display</span>
+              <span class="badge badge--none">No Signal</span>
+            </div>
+            <div class="preview-wrap">
+              <div class="preview-empty">
+                <span class="preview-empty-label">Waiting for kiosk connection…</span>
+                <span class="preview-empty-hint">Screenshots stream every 3 s once connected</span>
+              </div>
+            </div>
+          </div>`;
+                    return;
+                }
+
+                const ad = shot.currentAd;
+                let adInfoHtml;
+                if (ad) {
+                    adInfoHtml = `
+          <div class="preview-ad-info">
+            <div class="preview-ad-name">${esc(ad.name || "Untitled")}</div>
+            <div class="preview-ad-meta">
+              <span class="ad-type ad-type--${ad.type}">${ad.type}</span>
+              ${ad.durationMs ? ` · ${(ad.durationMs / 1000).toFixed(0)}s` : ""}
+              ${ad.submitterName ? ` · ${esc(ad.submitterName)}` : ""}
+              ${ad.submitterEmail ? ` <span style="opacity:.38;font-family:monospace;font-size:10px">&lt;${esc(ad.submitterEmail)}&gt;</span>` : ""}
+              ${ad.submittedAt ? `<br>Submitted ${fmtDate(ad.submittedAt)}` : ""}
+              ${ad.approvedAt ? ` · Approved ${fmtDate(ad.approvedAt)}` : ""}
+            </div>
+          </div>`;
+                } else {
+                    adInfoHtml = `
+          <div class="preview-ad-info">
+            <div class="preview-ad-meta" style="opacity:.35">Startup Shell default display</div>
+          </div>`;
+                }
+
+                // shot.screenshot is a base64 string (Go json.Encoder encodes []byte as base64)
+                el.innerHTML = `
+        <div class="section">
+          <div class="section-head">
+            <span class="section-title">Live Kiosk Display</span>
+            <span class="badge badge--live">● Live</span>
+          </div>
+          <div class="preview-wrap">
+            <img class="preview-img" src="data:image/jpeg;base64,${shot.screenshot}" alt="Kiosk preview">
+            ${adInfoHtml}
+            <div class="preview-time">Updated ${new Date(shot.screenshotTime).toLocaleTimeString()}</div>
+          </div>
+        </div>`;
+            }
+
+            // ─────────────────────────────────────────────── Submitted ──
+            function renderSubmitted(ads) {
+                const el = document.getElementById("submitted-wrap");
+                if (!el) return;
+
+                const rows = ads.length
+                    ? ads
+                          .map(
+                              (ad) => `
+            <div class="ad-row">
+              <div class="ad-num">·</div>
+              <div class="ad-left">
+                <div class="ad-name">${esc(ad.name)}</div>
+                <div class="ad-meta">
+                  <span class="ad-type ad-type--${ad.type}">${ad.type}</span>
+                  <span class="ad-dur">${(ad.durationMs / 1000).toFixed(0)}s</span>
+                  ${ad.submitterName ? `<span class="ad-sub">${esc(ad.submitterName)}</span>` : ""}
+                  ${ad.submitterEmail ? `<span class="ad-sub" style="opacity:.35;font-family:monospace">${esc(ad.submitterEmail)}</span>` : ""}
+                  ${ad.submittedAt ? `<span class="ad-date">${fmtDate(ad.submittedAt)}</span>` : ""}
+                </div>
+              </div>
+              <div class="ad-right">
+                <button class="btn btn--green btn--sm" onclick="approveAd('${ad.id}')">Approve</button>
+                <button class="btn btn--red   btn--sm" onclick="rejectAd('${ad.id}')">Reject</button>
+              </div>
+            </div>`,
+                          )
+                          .join("")
+                    : `<div class="empty-state">No pending submissions</div>`;
+
+                const bulkBtn =
+                    ads.length > 1
+                        ? `<button class="btn btn--green btn--sm" onclick="approveAll()">Approve All</button>`
+                        : "";
+
+                el.innerHTML = `
+        <div class="section">
+          <div class="section-head">
+            <span class="section-title">Submitted — Pending Review</span>
+            <div class="section-head-right">
+              ${bulkBtn}
+              <span class="badge ${ads.length > 0 ? "badge--yellow" : "badge--none"}">${ads.length}</span>
+            </div>
+          </div>
+          <div>${rows}</div>
+        </div>`;
+            }
+
+            // ──────────────────────────────────────────────── Approved ──
+            function renderApproved(ads) {
+                const el = document.getElementById("approved-wrap");
+                if (!el) return;
+
+                const rows = ads.length
+                    ? ads
+                          .map(
+                              (ad) => `
+            <div class="ad-row">
+              <div class="ad-num">✓</div>
+              <div class="ad-left">
+                <div class="ad-name">${esc(ad.name)}</div>
+                <div class="ad-meta">
+                  <span class="ad-type ad-type--${ad.type}">${ad.type}</span>
+                  <span class="ad-dur">${(ad.durationMs / 1000).toFixed(0)}s</span>
+                  ${ad.submitterName ? `<span class="ad-sub">${esc(ad.submitterName)}</span>` : ""}
+                  ${ad.approvedAt ? `<span class="ad-date">approved ${fmtDateShort(ad.approvedAt)}</span>` : ""}
+                </div>
+              </div>
+              <div class="ad-right">
+                <button class="btn btn--blue btn--sm" onclick="activateAd('${ad.id}')">Activate</button>
+                <button class="btn btn--red  btn--sm" onclick="deleteApproved('${ad.id}')">Delete</button>
+              </div>
+            </div>`,
+                          )
+                          .join("")
+                    : `<div class="empty-state">No approved ads waiting to go live</div>`;
+
+                const bulkBtn =
+                    ads.length > 1
+                        ? `<button class="btn btn--blue btn--sm" onclick="activateAll()">Activate All</button>`
+                        : "";
+
+                el.innerHTML = `
+        <div class="section">
+          <div class="section-head">
+            <span class="section-title">Approved — Ready to Activate</span>
+            <div class="section-head-right">
+              ${bulkBtn}
+              <span class="badge ${ads.length > 0 ? "badge--blue" : "badge--none"}">${ads.length}</span>
+            </div>
+          </div>
+          <div>${rows}</div>
+        </div>`;
+            }
+
+            // ────────────────────────────────────────────────── Active ──
+            function renderActive(ads) {
+                const el = document.getElementById("active-wrap");
+                if (!el) return;
+
+                const rows = ads.length
+                    ? ads
+                          .map(
+                              (ad, i) => `
+            <div class="ad-row">
+              <div class="ad-num">${i + 1}</div>
+              <div class="ad-left">
+                <div class="ad-name">${esc(ad.name)}</div>
+                <div class="ad-meta">
+                  <span class="ad-type ad-type--${ad.type}">${ad.type}</span>
+                  <span class="ad-dur">${(ad.durationMs / 1000).toFixed(0)}s</span>
+                  ${ad.submitterName ? `<span class="ad-sub">${esc(ad.submitterName)}</span>` : ""}
+                </div>
+              </div>
+              <div class="ad-right">
+                <button class="btn btn--sm" onclick="moveUp(${i})"   ${i === 0 ? "disabled" : ""}>↑</button>
+                <button class="btn btn--sm" onclick="moveDown(${i})" ${i === ads.length - 1 ? "disabled" : ""}>↓</button>
+                <button class="btn btn--red btn--sm" onclick="deleteActive('${ad.id}')">Remove</button>
+              </div>
+            </div>`,
+                          )
+                          .join("")
+                    : `<div class="empty-state">No ads in live playlist — activate approved ads above</div>`;
+
+                const clearBtn = ads.length
+                    ? `<button class="btn btn--red btn--sm" onclick="confirmClearActive()">Clear All</button>`
+                    : "";
+
+                el.innerHTML = `
+        <div class="section">
+          <div class="section-head">
+            <span class="section-title">Active Playlist</span>
+            <span class="badge ${ads.length > 0 ? "badge--green" : "badge--none"}">${ads.length}</span>
+          </div>
+          <div>${rows}</div>
+          <div class="controls-bar">
+            <span class="controls-label">Kiosk</span>
+            <button class="btn btn--sm" onclick="kioskPrev()">← Prev</button>
+            <button class="btn btn--sm" onclick="kioskNext()">Next →</button>
+            <button class="btn btn--red btn--sm" onclick="confirmRestart()">Restart</button>
+            ${clearBtn}
+          </div>
+        </div>`;
+            }
+
+            // ─────────────────────────────────────────────── Actions ──
+            async function approveAd(id) {
+                try {
+                    await api("POST", `/api/admin/submitted/${id}/approve`);
+                    await loadAll();
+                } catch {
+                    alert("Could not approve ad.");
+                }
+            }
+
+            async function rejectAd(id) {
+                if (!confirm("Reject and permanently remove this submission?"))
+                    return;
+                try {
+                    await api("DELETE", `/api/admin/submitted/${id}`);
+                    await loadAll();
+                } catch {
+                    alert("Could not reject ad.");
+                }
+            }
+
+            async function approveAll() {
+                try {
+                    const state = await api("GET", "/api/admin/state");
+                    for (const ad of state.submitted || []) {
+                        await api(
+                            "POST",
+                            `/api/admin/submitted/${ad.id}/approve`,
+                        );
+                    }
+                    await loadAll();
+                } catch {
+                    alert("Could not approve all.");
+                }
+            }
+
+            async function activateAd(id) {
+                try {
+                    await api("POST", `/api/admin/approved/${id}/activate`);
+                    await loadAll();
+                } catch {
+                    alert("Could not activate ad.");
+                }
+            }
+
+            async function activateAll() {
+                try {
+                    await api("POST", "/api/admin/reload");
+                    await loadAll();
+                } catch {
+                    alert("Could not activate all.");
+                }
+            }
+
+            async function deleteApproved(id) {
+                if (!confirm("Delete this approved ad?")) return;
+                try {
+                    await api("DELETE", `/api/admin/approved/${id}`);
+                    await loadAll();
+                } catch {
+                    alert("Could not delete.");
+                }
+            }
+
+            async function deleteActive(id) {
+                if (!confirm("Remove this ad from the live playlist?")) return;
+                try {
+                    await api("DELETE", `/api/admin/active/${id}`);
+                    await loadAll();
+                } catch {
+                    alert("Could not remove.");
+                }
+            }
+
+            async function moveUp(i) {
+                const ids = (currentState.active || []).map((a) => a.id);
+                if (i < 1 || i >= ids.length) return;
+                [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
+                try {
+                    await api("PUT", "/api/admin/reorder", { ids });
+                    await loadAll();
+                } catch {}
+            }
+
+            async function moveDown(i) {
+                const ids = (currentState.active || []).map((a) => a.id);
+                if (i >= ids.length - 1) return;
+                [ids[i], ids[i + 1]] = [ids[i + 1], ids[i]];
+                try {
+                    await api("PUT", "/api/admin/reorder", { ids });
+                    await loadAll();
+                } catch {}
+            }
+
+            async function kioskNext() {
+                try {
+                    await api("POST", "/api/admin/kiosk/next");
+                } catch {}
+            }
+            async function kioskPrev() {
+                try {
+                    await api("POST", "/api/admin/kiosk/prev");
+                } catch {}
+            }
+
+            async function confirmRestart() {
+                if (!confirm("Restart the kiosk process?")) return;
+                try {
+                    await api("POST", "/api/admin/restart-kiosk");
+                } catch {
+                    alert("Could not restart.");
+                }
+            }
+
+            async function confirmClearActive() {
+                if (!confirm("Remove ALL ads from the live playlist?")) return;
+                try {
+                    await api("POST", "/api/admin/clear");
+                    await loadAll();
+                } catch {
+                    alert("Could not clear.");
+                }
+            }
+
+            // ────────────────────────────────────────────── Helpers ──
+            function esc(s) {
+                return String(s ?? "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;");
+            }
+
+            function fmtDate(iso) {
+                return new Date(iso).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
                 });
-                loadDashboard();
-            } catch (e) {
-                alert('Error reordering');
             }
-        }
 
-        async function moveDown(index) {
-            try {
-                const state = await apiCall('/api/admin/state');
-                const ids = state.active.map(a => a.id);
-                [ids[index], ids[index + 1]] = [ids[index + 1], ids[index]];
-                await apiCall('/api/admin/reorder', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ids})
+            function fmtDateShort(iso) {
+                return new Date(iso).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
                 });
-                loadDashboard();
-            } catch (e) {
-                alert('Error reordering');
             }
-        }
-
-        async function kioskNext() {
-            try {
-                await apiCall('/api/admin/kiosk/next', {method: 'POST'});
-            } catch (e) {}
-        }
-
-        async function kioskPrev() {
-            try {
-                await apiCall('/api/admin/kiosk/prev', {method: 'POST'});
-            } catch (e) {}
-        }
-
-        async function restartKiosk() {
-            if (!confirm('Restart the kiosk?')) return;
-            try {
-                await apiCall('/api/admin/restart-kiosk', {method: 'POST'});
-                alert('Kiosk restarting...');
-            } catch (e) {
-                alert('Error restarting kiosk');
-            }
-        }
-    </script>
-</body>
+        </script>
+    </body>
 </html>
