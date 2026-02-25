@@ -436,7 +436,7 @@
                 document.getElementById("preview").innerHTML = `
                 <div class="preview-section">
                     <h3 class="section-title">Current Kiosk Display</h3>
-                    <img src="data:image/jpeg;base64,${btoa(String.fromCharCode.apply(null, new Uint8Array(screenshot.screenshot)))}"
+                    <img src="data:image/jpeg;base64,${screenshot.screenshot}"
                          alt="Kiosk Preview" class="preview-img">
                     ${adInfo}
                     <p style="font-size: 12px; color: #666; margin-top: 10px;">

@@ -429,7 +429,7 @@ function App() {
       );
     };
 
-    const interval = setInterval(captureScreenshot, 3000);
+    const interval = setInterval(captureScreenshot, 4000);
     const initial = setTimeout(captureScreenshot, 800);
     return () => {
       clearInterval(interval);
