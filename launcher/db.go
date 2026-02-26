@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
 // adRecord is the on-disk representation of a single ad.
@@ -30,6 +32,25 @@ type adRecord struct {
 	SortOrder   int    `json:"sort_order"`
 	SubmittedAt string `json:"submitted_at"` // RFC3339
 }
+
+// adStore is the root JSON object.
+type adStore struct {
+	Ads []adRecord `json:"ads"`
+}
+
+var (
+	storeMu   sync.RWMutex
+	storePath string
+	store     adStore
+)
+
+// Status constants
+const (
+	adStatusSubmitted = "submitted"
+	adStatusApproved  = "approved"
+	adStatusLive      = "live"
+	adStatusDenied    = "denied"
+)
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -171,6 +192,7 @@ func dbSaveAd(ad kioskAd, originalURL string) error {
 			SubmittedBy: ad.SubmittedBy,
 			Status:      adStatusSubmitted,
 			SortOrder:   0,
+			SubmittedAt: time.Now().UTC().Format(time.RFC3339),
 		},
 	)
 	saveStore()
@@ -298,25 +320,6 @@ func dbMoveApprovedToLive() int {
 		saveStore()
 	}
 	return n
-}
-
-// dbBySubmitter returns all ads submitted by the given email, newest first.
-func dbBySubmitter(email string) []adRecord {
-	storeMu.RLock()
-	defer storeMu.RUnlock()
-	var out []adRecord
-	for _, r := range store.Ads {
-		if r.SubmittedBy == email {
-			out = append(out, r)
-		}
-	}
-	// Sort newest first (SubmittedAt is RFC3339, so lexicographic order works)
-	sort.Slice(
-		out, func(i, j int) bool {
-			return out[i].SubmittedAt > out[j].SubmittedAt
-		},
-	)
-	return out
 }
 
 // dbBySubmitter returns all ads submitted by the given email, newest first.
