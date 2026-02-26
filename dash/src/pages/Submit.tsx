@@ -73,7 +73,15 @@ function LoginGate() {
 }
 
 // ── Profile bar ───────────────────────────────────────────────────────────────
-function ProfileBar({ user }: { user: GoogleUser }) {
+function ProfileBar({
+  user,
+  view,
+  onToggleView,
+}: {
+  user: GoogleUser;
+  view: "submit" | "history";
+  onToggleView: () => void;
+}) {
   const { signOut } = useAuth();
   return (
     <div className="sub-profile-bar">
@@ -89,6 +97,13 @@ function ProfileBar({ user }: { user: GoogleUser }) {
         <span className="sub-profile-name">{user.name}</span>
         <span className="sub-profile-email">{user.email}</span>
       </div>
+      <button
+        className={`sub-profile-nav${view === "history" ? " sub-profile-nav--active" : ""}`}
+        type="button"
+        onClick={onToggleView}
+      >
+        {view === "history" ? "Submit an Ad" : "My Submissions"}
+      </button>
       <button className="sub-profile-signout" type="button" onClick={signOut}>
         Sign out
       </button>
@@ -100,6 +115,7 @@ function ProfileBar({ user }: { user: GoogleUser }) {
 export default function Submit() {
   const { user } = useAuth();
   const [submissions, setSubmissions] = useState<PendingAd[]>([]);
+  const [view, setView] = useState<"submit" | "history">("submit");
   const pollRef = useRef<number>();
 
   const fetchSubmissions = useCallback(async (email: string) => {
@@ -137,17 +153,33 @@ export default function Submit() {
 
   return (
     <div className="page">
-      <ProfileBar user={user} />
+      <ProfileBar
+        user={user}
+        view={view}
+        onToggleView={() => setView(view === "submit" ? "history" : "submit")}
+      />
       <p className="wordmark">Startup Shell</p>
-      <p className="page-title">Submit an Ad</p>
-      <div className="container">
-        <SubmitPanel
-          submitterName={user.name}
-          submitterEmail={user.email}
-          onSubmit={handleSubmit}
-        />
-        <AdQueue ads={submissions} />
-      </div>
+
+      {view === "submit" ? (
+        <>
+          <p className="page-title">Submit an Ad</p>
+          <div className="container">
+            <SubmitPanel
+              submitterName={user.name}
+              submitterEmail={user.email}
+              onSubmit={handleSubmit}
+            />
+            <AdQueue ads={submissions} />
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="page-title">My Submissions</p>
+          <div className="container">
+            <AdQueue ads={submissions} fullView />
+          </div>
+        </>
+      )}
     </div>
   );
 }

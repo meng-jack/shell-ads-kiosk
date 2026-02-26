@@ -14,6 +14,8 @@ export default function Footer() {
       <span>UMD College Park</span>
       <span className="sep">·</span>
       <span>{time}</span>
+      <span className="sep">·</span>
+      <a href="https://github.com/exoad/ShellNews-Bernard" target="_blank" rel="noopener noreferrer">Source</a>
     </footer>
   )
 }

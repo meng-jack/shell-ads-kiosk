@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import type { AdType, PendingAd } from "../types";
 import "./SubmitPanel.css";
 
-const FILE_IO_MAX = 4 * 1024 * 1024 * 1024; // 4 GB (file.io limit)
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 
 // ── Per-type configuration ─────────────────────────────────────────────────
 const TYPE_CONFIG: Record<
@@ -67,33 +67,35 @@ function fmtBytes(b: number): string {
   return Math.round(b / 1e3) + " KB";
 }
 
-// Upload directly to file.io from the browser — the request is crafted and
-// fired entirely from client-side JS so it never touches the Go server or any
-// Cloudflare tunnel (avoiding size / rate limits imposed on the host server).
-//
-// Uses XHR (not fetch) so we get real-time upload progress events.
-// The FormData is built here, not by the caller, to guarantee nothing mutates it
-// between construction and transmission.
-function uploadToFileIo(
-  file: File,
+// Read a file as a base64 data URL (for image/video) or plain text (for html).
+function readFileData(file: File, adType: AdType): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Failed to read file."));
+    if (adType === "html") {
+      reader.readAsText(file, "utf-8");
+    } else {
+      reader.readAsDataURL(file);
+    }
+  });
+}
+
+// POST the file data to the launcher's /api/upload-media endpoint.
+// Returns the /media/ path the server saved it under.
+function uploadToServer(
+  id: string,
+  adType: AdType,
+  ext: string,
+  data: string,
   onProgress: (pct: number) => void,
   signal: AbortSignal,
 ): Promise<string> {
-  // Build the multipart body right here — only the fields the API requires.
-  // POST / on https://file.io (no trailing slash — avoids redirect stripping body).
-  // autoDelete is omitted; the free tier always deletes on first download.
-  const fd = new FormData();
-  fd.append("file", file);
-  fd.append("expires", "1d");
-  fd.append("maxDownloads", "1");
-
+  const body = JSON.stringify({ id, type: adType, ext, data });
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    // No trailing slash — matches the API server base in the spec.
-    xhr.open("POST", "https://file.io");
-    // No explicit Content-Type header — the browser sets multipart/form-data
-    // with the correct boundary when FormData is passed to send().
-    xhr.withCredentials = false;
+    xhr.open("POST", "/api/upload-media");
+    xhr.setRequestHeader("Content-Type", "application/json");
 
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable)
@@ -101,54 +103,28 @@ function uploadToFileIo(
     });
 
     xhr.addEventListener("load", () => {
-      // HTTP error before we even parse JSON
       if (xhr.status !== 200) {
-        reject(
-          new Error(
-            `file.io returned HTTP ${xhr.status}${
-              xhr.statusText ? " " + xhr.statusText : ""
-            }.`,
-          ),
-        );
+        reject(new Error(`Server returned HTTP ${xhr.status}.`));
         return;
       }
       try {
-        const data = JSON.parse(xhr.responseText) as {
-          success: boolean;
-          link?: string;
-          message?: string;
-          status?: number;
+        const res = JSON.parse(xhr.responseText) as {
+          src?: string;
+          error?: string;
         };
-        if (data.success && data.link) {
-          resolve(data.link);
-        } else {
-          reject(
-            new Error(
-              data.message ??
-                `Upload rejected by file.io (status ${data.status ?? "unknown"}).`,
-            ),
-          );
-        }
+        if (res.src) resolve(res.src);
+        else reject(new Error(res.error ?? "Upload failed."));
       } catch {
-        reject(
-          new Error(
-            `Unexpected response from file.io (HTTP ${xhr.status}): ${xhr.responseText.slice(0, 120)}`,
-          ),
-        );
+        reject(new Error("Unexpected server response."));
       }
     });
 
     xhr.addEventListener("error", () =>
-      reject(
-        new Error(
-          "Could not reach file.io — check your internet connection. " +
-            "(If you are behind a strict firewall, file.io may be blocked.)",
-        ),
-      ),
+      reject(new Error("Upload failed — could not reach server.")),
     );
     xhr.addEventListener("abort", () => reject(new Error("Upload cancelled.")));
     signal.addEventListener("abort", () => xhr.abort());
-    xhr.send(fd);
+    xhr.send(body);
   });
 }
 
@@ -201,6 +177,7 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
 
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState<"encoding" | "uploading" | null>(null);
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -235,8 +212,8 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
       if (fileRef.current) fileRef.current.value = "";
       return;
     }
-    if (file.size > FILE_IO_MAX) {
-      setError(`File too large (${fmtBytes(file.size)}) — max 4 GB.`);
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(`File too large (${fmtBytes(file.size)}) — max 2 GB.`);
       setUploadFile(null);
       if (fileRef.current) fileRef.current.value = "";
       return;
@@ -250,18 +227,30 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
     setUploading(true);
     setError(null);
     setUploadPct(0);
+
     try {
-      const link = await uploadToFileIo(
-        uploadFile,
+      // Step 1: encode the file in the browser
+      setUploadPhase("encoding");
+      const ext = "." + (uploadFile.name.split(".").pop()?.toLowerCase() ?? "");
+      const data = await readFileData(uploadFile, type);
+
+      // Step 2: stream the encoded data to the server
+      setUploadPhase("uploading");
+      const src = await uploadToServer(
+        crypto.randomUUID(),
+        type,
+        ext,
+        data,
         setUploadPct,
         abortRef.current.signal,
       );
-      setUploadedUrl(link);
+      setUploadedUrl(src);
     } catch (e: unknown) {
       if ((e as Error).message !== "Upload cancelled.")
         setError(e instanceof Error ? e.message : "Upload failed.");
     } finally {
       setUploading(false);
+      setUploadPhase(null);
     }
   }
 
@@ -397,17 +386,10 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
       {mode === "upload" && (
         <div className="sp-upload-zone">
           <p className="sp-upload-note">
-            Your browser uploads directly to{" "}
-            <a
-              className="sp-link"
-              href="https://file.io"
-              target="_blank"
-              rel="noreferrer"
-            >
-              file.io
-            </a>{" "}
-            — bypasses the Cloudflare tunnel. The server then pulls the file
-            from file.io directly. Max <strong>4 GB</strong>.
+            {type === "html"
+              ? "Your HTML file is sent as text directly to the presentation server."
+              : "Your file is encoded in the browser and sent directly to the presentation server — no third-party service involved."}{" "}
+            Max <strong>2 GB</strong>.
           </p>
 
           {!uploadedUrl ? (
@@ -447,11 +429,30 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
                   className="sp-upload-btn"
                   onClick={handleUpload}
                 >
-                  Upload to file.io
+                  Upload
                 </button>
               )}
 
-              {uploading && (
+              {uploading && uploadPhase === "encoding" && (
+                <div className="sp-progress-wrap">
+                  <div className="sp-progress-encoding">
+                    <span className="sp-encoding-spinner" />
+                    <span className="sp-encoding-label">Encoding…</span>
+                  </div>
+                  <div className="sp-progress-row">
+                    <span className="sp-progress-pct" />
+                    <button
+                      type="button"
+                      className="sp-cancel-btn"
+                      onClick={handleCancelUpload}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {uploading && uploadPhase === "uploading" && (
                 <div className="sp-progress-wrap">
                   <div className="sp-progress">
                     <div
@@ -476,15 +477,10 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
             <div className="sp-uploaded-ok">
               <span className="sp-uploaded-check">✓</span>
               <div className="sp-uploaded-info">
-                <span className="sp-uploaded-label">Uploaded successfully</span>
-                <a
-                  className="sp-uploaded-url"
-                  href={uploadedUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {uploadedUrl}
-                </a>
+                <span className="sp-uploaded-label">Sent to server</span>
+                <span className="sp-uploaded-url">
+                  {uploadedUrl?.split("/").pop()}
+                </span>
               </div>
               <button
                 type="button"

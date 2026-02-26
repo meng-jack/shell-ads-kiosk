@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"crypto/rand"
 	"embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -93,6 +94,18 @@ type dashAd struct {
 	DurationSec int    `json:"durationSec"`
 	SubmittedBy string `json:"submittedBy"`
 }
+
+// uploadRequest is the JSON body for POST /api/upload-media.
+type uploadRequest struct {
+	ID   string `json:"id"`
+	Type string `json:"type"` // "image" | "video" | "html"
+	Ext  string `json:"ext"`  // e.g. ".png", ".mp4", ".html"
+	Data string `json:"data"` // base64 data URL (image/video) or raw text (html)
+}
+
+// maxUploadBodyBytes is the server-side body limit for /api/upload-media.
+// 3 GB covers the 2 GB raw file limit with base64 overhead (~33 %).
+const maxUploadBodyBytes = 3 * 1024 * 1024 * 1024
 
 // ─── Global state ─────────────────────────────────────────────────────────────
 
@@ -304,6 +317,7 @@ func serveDash() {
 	mux.HandleFunc("GET /api/kiosk/nav-poll", handleNavPoll)    // kiosk long-polls this
 	mux.HandleFunc("GET /api/submission-status", handleSubmissionStatus)  // public: poll ad status by IDs
 	mux.HandleFunc("GET /api/my-submissions", handleMySubmissions)         // public: all submissions for a submitter email
+	mux.HandleFunc("POST /api/upload-media", handleUploadMedia)             // public: upload media file as base64/text
 
 	// ── Serve locally-cached media files ──────────────────────────────────────────
 	mux.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.Dir(mediaDir))))
@@ -671,6 +685,101 @@ func handleMySubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+// handleUploadMedia accepts a base64-encoded media file (image/video) or raw
+// HTML text from the browser, saves it to mediaDir, and returns the /media/
+// path so the client can reference it in a follow-up submit.
+//
+// POST /api/upload-media
+//
+//	Body: { "id": "<uuid>", "type": "image"|"video"|"html",
+//	         "ext": ".png", "data": "<dataURL or raw text>" }
+//
+// Response: { "src": "/media/<id><ext>" }
+func handleUploadMedia(w http.ResponseWriter, r *http.Request) {
+	// Enforce a generous body limit (3 GB covers 2 GB raw + base64 overhead).
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBodyBytes)
+
+	var req uploadRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Validate ID — must be a non-empty alphanumeric/hyphen string.
+	if req.ID == "" {
+		http.Error(w, `{"error":"missing id"}`, http.StatusBadRequest)
+		return
+	}
+	for _, c := range req.ID {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '-' || c == '_') {
+			http.Error(w, `{"error":"invalid id"}`, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Validate extension — must start with '.' and contain only safe chars.
+	if req.Ext == "" || req.Ext[0] != '.' {
+		http.Error(w, `{"error":"missing or invalid ext"}`, http.StatusBadRequest)
+		return
+	}
+	for _, c := range req.Ext[1:] {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '.') {
+			http.Error(w, `{"error":"invalid ext"}`, http.StatusBadRequest)
+			return
+		}
+	}
+
+	filename := req.ID + req.Ext
+	destPath := filepath.Join(mediaDir, filename)
+	tmpPath := destPath + ".tmp"
+
+	if err := os.MkdirAll(mediaDir, 0o755); err != nil {
+		log.Printf("Upload: mkdir failed: %v", err)
+		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	var fileBytes []byte
+	switch req.Type {
+	case "html":
+		// HTML is sent as plain UTF-8 text.
+		fileBytes = []byte(req.Data)
+	default:
+		// Image/video are sent as base64 data URLs:
+		// "data:<mime>;base64,<encoded bytes>"
+		comma := strings.IndexByte(req.Data, ',')
+		if comma < 0 {
+			http.Error(w, `{"error":"invalid data URL"}`, http.StatusBadRequest)
+			return
+		}
+		decoded, err := base64.StdEncoding.DecodeString(req.Data[comma+1:])
+		if err != nil {
+			http.Error(w, `{"error":"base64 decode failed"}`, http.StatusBadRequest)
+			return
+		}
+		fileBytes = decoded
+	}
+
+	// Atomic write: write to .tmp then rename to final path.
+	if err := os.WriteFile(tmpPath, fileBytes, 0o644); err != nil {
+		log.Printf("Upload: write tmp failed: %v", err)
+		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		return
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		log.Printf("Upload: rename failed: %v", err)
+		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Upload: saved %s (%d bytes)", filename, len(fileBytes))
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"src": "/media/" + filename})
 }
 
 // handleSubmissionStatus is a public endpoint that lets submitters poll the

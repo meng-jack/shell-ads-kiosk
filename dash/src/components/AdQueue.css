@@ -83,3 +83,85 @@
 .aq-status--live     { color: rgba(100, 200, 255, 0.95); }
 .aq-status--denied   { color: rgba(255, 130, 130, 0.9); }
 .aq-status--unknown  { color: var(--dim); opacity: 0.55; }
+
+/* ── Full-view (My Submissions page) ────────────────────────────────────── */
+.aq--full {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+
+.aq-empty {
+    font-size: 13px;
+    color: var(--dim);
+    opacity: 0.5;
+    text-align: center;
+    padding: 40px 0;
+}
+
+.aq-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color 0.15s;
+}
+
+.aq-card--live    { border-left: 3px solid rgba(100, 200, 255, 0.5); }
+.aq-card--approved { border-left: 3px solid rgba(140, 220, 140, 0.4); }
+.aq-card--denied  { border-left: 3px solid rgba(255, 130, 130, 0.4); }
+.aq-card--submitted { border-left: 3px solid rgba(255, 220, 100, 0.35); }
+
+.aq-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.aq-card-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.aq-type {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.aq-type--image { background: rgba(96, 165, 250, 0.12); color: #93c5fd; border: 1px solid rgba(96, 165, 250, 0.2); }
+.aq-type--video { background: rgba(167, 139, 250, 0.12); color: #c4b5fd; border: 1px solid rgba(167, 139, 250, 0.2); }
+.aq-type--html  { background: rgba(52, 211, 153, 0.10); color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.2); }
+
+.aq-card-desc {
+    font-size: 11px;
+    color: var(--dim);
+    opacity: 0.6;
+    margin: 0;
+    line-height: 1.4;
+}
+
+.aq-card-meta {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+
+.aq-dur {
+    font-size: 10px;
+    color: var(--dim);
+    opacity: 0.5;
+}
