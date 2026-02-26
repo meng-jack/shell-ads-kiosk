@@ -41,52 +41,6 @@ async function req<T>(
   return res.json() as Promise<T>;
 }
 
-// Upload a file to the server. Returns the public URL path ("/media/<file>").
-// Reports progress via onProgress (0-100). Throws on failure.
-export function uploadFile(
-  file: File,
-  onProgress: (pct: number) => void,
-  signal: AbortSignal,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload");
-    xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable)
-        onProgress(Math.round((e.loaded / e.total) * 100));
-    });
-    xhr.addEventListener("load", () => {
-      if (xhr.status === 200) {
-        try {
-          const data = JSON.parse(xhr.responseText) as { url?: string; error?: string };
-          if (data.url) {
-            resolve(data.url);
-          } else {
-            reject(new Error(data.error ?? "Upload failed — no URL returned."));
-          }
-        } catch {
-          reject(new Error("Unexpected server response."));
-        }
-      } else {
-        try {
-          const data = JSON.parse(xhr.responseText) as { error?: string };
-          reject(new Error(data.error ?? `Server error ${xhr.status}`));
-        } catch {
-          reject(new Error(`Server error ${xhr.status}`));
-        }
-      }
-    });
-    xhr.addEventListener("error", () =>
-      reject(new Error("Network error — check your connection and try again.")),
-    );
-    xhr.addEventListener("abort", () => reject(new Error("Upload cancelled.")));
-    signal.addEventListener("abort", () => xhr.abort());
-    xhr.send(fd);
-  });
-}
-
 export interface KioskAd {
   id: string;
   name: string;

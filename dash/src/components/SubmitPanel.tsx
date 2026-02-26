@@ -1,9 +1,8 @@
 import { useRef, useState } from "react";
 import type { AdType, PendingAd } from "../types";
-import { uploadFile as uploadFileToServer } from "../api";
 import "./SubmitPanel.css";
 
-const FILE_IO_MAX = 500 * 1024 * 1024; // 500 MB server limit
+const FILE_IO_MAX = 4 * 1024 * 1024 * 1024; // 4 GB (file.io limit)
 
 // ── Per-type configuration ─────────────────────────────────────────────────
 const TYPE_CONFIG: Record<
@@ -64,6 +63,46 @@ function fmtBytes(b: number): string {
   if (b >= 1e9) return (b / 1e9).toFixed(1) + " GB";
   if (b >= 1e6) return (b / 1e6).toFixed(1) + " MB";
   return Math.round(b / 1e3) + " KB";
+}
+
+// Upload directly to file.io from the browser — bypasses the Cloudflare tunnel
+// entirely. file.io returns a one-time-use link which the launcher downloads to
+// local storage immediately upon submission, before the link expires.
+function uploadToFileIo(
+  fd: FormData,
+  onProgress: (pct: number) => void,
+  signal: AbortSignal,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "https://file.io/?expires=1d");
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable)
+        onProgress(Math.round((e.loaded / e.total) * 100));
+    });
+    xhr.addEventListener("load", () => {
+      try {
+        const data = JSON.parse(xhr.responseText) as {
+          success: boolean;
+          link?: string;
+          message?: string;
+        };
+        if (data.success && data.link) resolve(data.link);
+        else
+          reject(
+            new Error(data.message ?? "Upload failed — no link returned."),
+          );
+      } catch {
+        reject(new Error("Unexpected response from file.io."));
+      }
+    });
+    xhr.addEventListener("error", () =>
+      reject(new Error("Network error — check your connection and try again.")),
+    );
+    xhr.addEventListener("abort", () => reject(new Error("Upload cancelled.")));
+    signal.addEventListener("abort", () => xhr.abort());
+    xhr.send(fd);
+  });
 }
 
 // Validate a File against the allowed extensions + MIME types for a given type.
@@ -147,7 +186,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
       return;
     }
     if (file.size > FILE_IO_MAX) {
-      setError(`File too large (${fmtBytes(file.size)}) — max 500 MB.`);
+      setError(`File too large (${fmtBytes(file.size)}) — max 4 GB.`);
       setUploadFile(null);
       if (fileRef.current) fileRef.current.value = "";
       return;
@@ -161,9 +200,11 @@ export default function SubmitPanel({ onSubmit }: Props) {
     setUploading(true);
     setError(null);
     setUploadPct(0);
+    const fd = new FormData();
+    fd.append("file", uploadFile);
     try {
-      const link = await uploadFileToServer(
-        uploadFile,
+      const link = await uploadToFileIo(
+        fd,
         setUploadPct,
         abortRef.current.signal,
       );
@@ -187,13 +228,10 @@ export default function SubmitPanel({ onSubmit }: Props) {
       return mode === "upload"
         ? "Upload a file first, or switch to Paste URL."
         : "URL is required.";
-    // Server uploads return a /media/ path — skip absolute URL validation for those.
-    if (mode !== "upload" || !finalUrl.startsWith("/media/")) {
-      try {
-        new URL(finalUrl);
-      } catch {
-        return "Enter a valid URL (must start with https://).";
-      }
+    try {
+      new URL(finalUrl);
+    } catch {
+      return "Enter a valid URL (must start with https://).";
     }
     if (mode === "url") {
       const extErr = validateUrlExt(finalUrl, cfg);
@@ -305,8 +343,17 @@ export default function SubmitPanel({ onSubmit }: Props) {
       {mode === "upload" && (
         <div className="sp-upload-zone">
           <p className="sp-upload-note">
-            Your file is uploaded securely to this server. Max{" "}
-            <strong>500 MB</strong>.
+            Your browser uploads directly to{" "}
+            <a
+              className="sp-link"
+              href="https://file.io"
+              target="_blank"
+              rel="noreferrer"
+            >
+              file.io
+            </a>{" "}
+            — bypasses the Cloudflare tunnel. The server then pulls the file
+            from file.io directly. Max <strong>4 GB</strong>.
           </p>
 
           {!uploadedUrl ? (
@@ -346,7 +393,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
                   className="sp-upload-btn"
                   onClick={handleUpload}
                 >
-                  Upload file
+                  Upload to file.io
                 </button>
               )}
 

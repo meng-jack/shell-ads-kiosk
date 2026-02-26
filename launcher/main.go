@@ -281,10 +281,7 @@ func serveDash() {
 	mux.HandleFunc("GET /api/playlist", handlePlaylist)
 	mux.HandleFunc("GET /api/kiosk/nav-poll", handleNavPoll) // kiosk long-polls this
 
-	// ── Public file upload (any user can upload; admin must approve) ─────────
-	mux.HandleFunc("POST /api/upload", handleUpload)
-
-	// ── Serve uploaded media files ────────────────────────────────────────────
+	// ── Serve locally-cached media files ──────────────────────────────────────────
 	mux.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.Dir(mediaDir))))
 
 	// ── Admin auth ────────────────────────────────────────────────────────────
@@ -318,59 +315,111 @@ func serveDash() {
 	}
 }
 
-// handleUpload accepts a multipart file upload (field name "file"), saves it to
-// the media directory with a random filename, and returns {"url":"/media/<file>"}.
-// This endpoint is intentionally public so regular users can upload ad media
-// before submitting; an admin must still approve the submitted ad.
-func handleUpload(w http.ResponseWriter, r *http.Request) {
-	const maxUploadBytes = 500 << 20 // 500 MB
-	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
-		http.Error(w, `{"error":"file too large or bad form"}`, http.StatusBadRequest)
-		return
+// downloadToMedia fetches a remote URL and saves it under mediaDir using the
+// ad's ID as the base filename, preserving the original extension.
+// Returns the "/media/<file>" path on success, or the original URL on failure
+// so the ad always has a usable src even if the download fails.
+// It is safe to call from multiple goroutines concurrently.
+func downloadToMedia(adID, rawURL string) string {
+	if mediaDir == "" || rawURL == "" {
+		return rawURL
 	}
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, `{"error":"missing file field"}`, http.StatusBadRequest)
-		return
+	// Only pull http/https resources.
+	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+		return rawURL
 	}
-	defer file.Close()
-
-	ext := strings.ToLower(filepath.Ext(header.Filename))
+	ext := strings.ToLower(filepath.Ext(strings.SplitN(rawURL, "?", 2)[0]))
 	allowed := map[string]bool{
 		".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".gif": true,
 		".mp4": true, ".webm": true,
 		".html": true, ".htm": true,
 	}
 	if !allowed[ext] {
-		http.Error(w, `{"error":"file type not allowed"}`, http.StatusBadRequest)
-		return
+		// Unknown extension — fall back to original URL so the kiosk can still try.
+		return rawURL
 	}
 
-	if mediaDir == "" {
-		http.Error(w, `{"error":"server media dir not configured"}`, http.StatusInternalServerError)
-		return
+	safe := func() string {
+		var b strings.Builder
+		for _, r := range adID {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+				b.WriteRune(r)
+			} else {
+				b.WriteRune('_')
+			}
+		}
+		return b.String()
+	}()
+
+	destPath := filepath.Join(mediaDir, safe+ext)
+
+	// If already cached, return immediately.
+	if _, err := os.Stat(destPath); err == nil {
+		log.Printf("Media: %s already cached, skipping download", safe+ext)
+		return "/media/" + safe + ext
 	}
 
-	filename := generateToken() + ext
-	destPath := filepath.Join(mediaDir, filename)
-
-	out, err := os.Create(destPath)
+	log.Printf("Media: downloading %s → %s", rawURL, safe+ext)
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
-		log.Printf("Upload: create file: %v", err)
-		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
-		return
+		log.Printf("Media: build request failed: %v", err)
+		return rawURL
 	}
-	written, copyErr := io.Copy(out, file)
-	out.Close()
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		log.Printf("Media: download failed: %v", err)
+		return rawURL
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Media: server returned %s for %s", resp.Status, rawURL)
+		return rawURL
+	}
+
+	// Write to temp file then atomically rename.
+	tmp, err := os.CreateTemp(mediaDir, "dl-*")
+	if err != nil {
+		log.Printf("Media: create temp: %v", err)
+		return rawURL
+	}
+	tmpName := tmp.Name()
+	_, copyErr := io.Copy(tmp, resp.Body)
+	tmp.Close()
 	if copyErr != nil {
-		os.Remove(destPath)
-		log.Printf("Upload: write file: %v", copyErr)
-		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
-		return
+		os.Remove(tmpName)
+		log.Printf("Media: write failed: %v", copyErr)
+		return rawURL
 	}
-	log.Printf("Upload: saved %s (%d bytes)", filename, written)
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"url": "/media/" + filename})
+	if err := os.Rename(tmpName, destPath); err != nil {
+		os.Remove(tmpName)
+		log.Printf("Media: rename failed: %v", err)
+		return rawURL
+	}
+	log.Printf("Media: cached %s", safe+ext)
+	return "/media/" + safe + ext
+}
+
+// updateAdSrc scans all three pipeline slices and replaces the Src of the ad
+// matching adID with newSrc. Must be called with playlistMu held.
+func updateAdSrc(adID, newSrc string) {
+	for i, a := range submittedAds {
+		if a.ID == adID {
+			submittedAds[i].Src = newSrc
+			return
+		}
+	}
+	for i, a := range approvedAds {
+		if a.ID == adID {
+			approvedAds[i].Src = newSrc
+			return
+		}
+	}
+	for i, a := range forcedAds {
+		if a.ID == adID {
+			forcedAds[i].Src = newSrc
+			return
+		}
+	}
 }
 
 // handleSubmitAds queues incoming ads as "submitted" — not visible to the kiosk
@@ -389,7 +438,7 @@ func handleSubmitAds(w http.ResponseWriter, r *http.Request) {
 			Name:       d.Name,
 			Type:       d.Type,
 			DurationMs: d.DurationSec * 1000,
-			Src:        d.URL,
+			Src:        d.URL, // may be a file.io/CDN URL — downloaded below
 			Transition: adTransition{Enter: "fade", Exit: "fade"},
 		}
 		ads = append(ads, ad)
@@ -398,6 +447,24 @@ func handleSubmitAds(w http.ResponseWriter, r *http.Request) {
 	playlistMu.Lock()
 	submittedAds = append(submittedAds, ads...)
 	playlistMu.Unlock()
+
+	// For each ad that has a remote URL, immediately fetch it to local /media/
+	// in the background. This consumes file.io one-time links before they expire
+	// and ensures the kiosk always plays from local storage (no tunnel involved).
+	for _, ad := range ads {
+		if ad.Src == "" || strings.HasPrefix(ad.Src, "/media/") {
+			continue
+		}
+		go func(id, src string) {
+			newSrc := downloadToMedia(id, src)
+			if newSrc != src {
+				playlistMu.Lock()
+				updateAdSrc(id, newSrc)
+				playlistMu.Unlock()
+				log.Printf("Submit: ad %q media cached as %s", id, newSrc)
+			}
+		}(ad.ID, ad.Src)
+	}
 
 	log.Printf("Submit: %d ad(s) queued for admin review (total submitted: %d)", len(ads), len(submittedAds))
 	w.Header().Set("Content-Type", "application/json")
