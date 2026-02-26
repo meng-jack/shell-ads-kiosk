@@ -16,15 +16,7 @@ import (
 "sort"
 "strings"
 "sync"
-)
-
-// Status constants – the only values stored in the "status" field.
-const (
-adStatusSubmitted = "submitted"
-adStatusApproved  = "approved"
-adStatusLive      = "live"
-adStatusDenied    = "denied"
-)
+	"time"
 
 // adRecord is the on-disk representation of a single ad.
 type adRecord struct {
@@ -37,17 +29,7 @@ DurationMs  int    `json:"duration_ms"`
 SubmittedBy string `json:"submitted_by"`
 Status      string `json:"status"`
 SortOrder   int    `json:"sort_order"`
-}
-
-// adStore is the root JSON object.
-type adStore struct {
-Ads []adRecord `json:"ads"`
-}
-
-var (
-storeMu   sync.RWMutex
-storePath string
-store     adStore
+	SubmittedAt string `json:"submitted_at"` // RFC3339
 )
 
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
@@ -313,6 +295,40 @@ if n > 0 {
 saveStore()
 }
 return n
+}
+
+// dbBySubmitter returns all ads submitted by the given email, newest first.
+func dbBySubmitter(email string) []adRecord {
+	storeMu.RLock()
+	defer storeMu.RUnlock()
+	var out []adRecord
+	for _, r := range store.Ads {
+		if r.SubmittedBy == email {
+			out = append(out, r)
+		}
+	}
+	// Sort newest first (SubmittedAt is RFC3339, so lexicographic order works)
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].SubmittedAt > out[j].SubmittedAt
+	})
+	return out
+}
+
+// dbBySubmitter returns all ads submitted by the given email, newest first.
+func dbBySubmitter(email string) []adRecord {
+	storeMu.RLock()
+	defer storeMu.RUnlock()
+	var out []adRecord
+	for _, r := range store.Ads {
+		if r.SubmittedBy == email {
+			out = append(out, r)
+		}
+	}
+	// Sort newest first (SubmittedAt is RFC3339, so lexicographic order works)
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].SubmittedAt > out[j].SubmittedAt
+	})
+	return out
 }
 
 // dbAllStatuses returns a map of ad_id → status for every ad in the store.

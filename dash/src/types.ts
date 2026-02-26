@@ -15,7 +15,7 @@ export interface CardData {
 }
 
 export type AdType = "image" | "video" | "html";
-export type AdStatus = "pending" | "approved" | "live" | "denied" | "unknown";
+export type AdStatus = "submitted" | "approved" | "live" | "denied" | "unknown";
 
 export interface PendingAd {
   id: string;
@@ -26,16 +26,4 @@ export interface PendingAd {
   status: AdStatus;
   submittedAt: Date;
   submittedBy: string;
-}
-
-/** Serialisable version stored in localStorage (dates as ISO strings). */
-export interface SubmissionRecord {
-  id: string;
-  name: string;
-  type: AdType;
-  url: string;
-  durationSec: number;
-  submittedAt: string;
-  submittedBy: string;
-  status: AdStatus;
 }

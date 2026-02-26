@@ -303,6 +303,7 @@ func serveDash() {
 	mux.HandleFunc("GET /api/playlist", handlePlaylist)
 	mux.HandleFunc("GET /api/kiosk/nav-poll", handleNavPoll)    // kiosk long-polls this
 	mux.HandleFunc("GET /api/submission-status", handleSubmissionStatus)  // public: poll ad status by IDs
+	mux.HandleFunc("GET /api/my-submissions", handleMySubmissions)         // public: all submissions for a submitter email
 
 	// ── Serve locally-cached media files ──────────────────────────────────────────
 	mux.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.Dir(mediaDir))))
@@ -630,6 +631,46 @@ func handleAdminDeleteDenied(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Admin: permanently deleted denied ad %q", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// handleMySubmissions returns all ads submitted by the given email address,
+// ordered newest-first. No authentication required — the email itself is the key.
+// Usage: GET /api/my-submissions?email=user@example.com
+func handleMySubmissions(w http.ResponseWriter, r *http.Request) {
+	email := strings.TrimSpace(r.URL.Query().Get("email"))
+	if email == "" {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]any{})
+		return
+	}
+
+	type submissionItem struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Type        string `json:"type"`
+		URL         string `json:"url"`
+		DurationSec int    `json:"durationSec"`
+		SubmittedBy string `json:"submittedBy"`
+		SubmittedAt string `json:"submittedAt"`
+		Status      string `json:"status"`
+	}
+
+	recs := dbBySubmitter(email)
+	out := make([]submissionItem, len(recs))
+	for i, rec := range recs {
+		out[i] = submissionItem{
+			ID:          rec.AdID,
+			Name:        rec.Name,
+			Type:        rec.AdType,
+			URL:         rec.OriginalURL,
+			DurationSec: rec.DurationMs / 1000,
+			SubmittedBy: rec.SubmittedBy,
+			SubmittedAt: rec.SubmittedAt,
+			Status:      rec.Status,
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 // handleSubmissionStatus is a public endpoint that lets submitters poll the

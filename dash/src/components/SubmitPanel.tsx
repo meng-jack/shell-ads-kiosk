@@ -308,7 +308,7 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
         type,
         url: finalUrl,
         durationSec: duration,
-        status: "pending",
+        status: "submitted",
         submittedAt: new Date(),
         submittedBy,
       },

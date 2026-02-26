@@ -78,7 +78,7 @@
     margin-top: 2px;
 }
 
-.aq-status--pending  { color: rgba(255, 220, 100, 0.9); }
+.aq-status--submitted { color: rgba(255, 220, 100, 0.9); }
 .aq-status--approved { color: rgba(140, 220, 140, 0.9); }
 .aq-status--live     { color: rgba(100, 200, 255, 0.95); }
 .aq-status--denied   { color: rgba(255, 130, 130, 0.9); }

@@ -6,7 +6,7 @@ interface Props {
 }
 
 const STATUS_LABEL: Record<AdStatus, string> = {
-  pending: "Pending",
+  submitted: "Pending",
   approved: "Approved",
   live: "Live",
   denied: "Denied",

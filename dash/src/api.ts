@@ -66,19 +66,25 @@ export interface AdminStats {
   updating: boolean;
 }
 
-export interface SubmissionStatusEntry {
+export interface SubmissionItem {
   id: string;
-  status: "pending" | "approved" | "live" | "denied" | "unknown";
+  name: string;
+  type: string;
+  url: string;
+  durationSec: number;
+  submittedBy: string;
+  submittedAt: string; // ISO 8601
+  status: "submitted" | "approved" | "live" | "denied" | "unknown";
 }
 
-/** Fetch submission statuses for a list of ad IDs (no auth needed). */
-export async function submissionStatus(
-  ids: string[],
-): Promise<SubmissionStatusEntry[]> {
-  if (ids.length === 0) return [];
-  const res = await fetch("/api/submission-status?ids=" + ids.join(","));
+/** Fetch all submissions for a given submitter email (no auth needed). */
+export async function mySubmissions(
+  email: string,
+): Promise<SubmissionItem[]> {
+  if (!email) return [];
+  const res = await fetch("/api/my-submissions?email=" + encodeURIComponent(email));
   if (!res.ok) return [];
-  return res.json() as Promise<SubmissionStatusEntry[]>;
+  return res.json() as Promise<SubmissionItem[]>;
 }
 
 export type UpdateStage =
