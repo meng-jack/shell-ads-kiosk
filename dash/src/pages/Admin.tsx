@@ -834,7 +834,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       {/* Kiosk screenshot */}
       <KioskScreenshot />
 
-      {/* Update */}}
+      {/* Update */}
       <UpdatePanel />
 
       {err && (
@@ -981,7 +981,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </>
       )}
 
-      {preview && <Preview ad={preview} onClose={() => setPreview(null)} />}}
+      {preview && <Preview ad={preview} onClose={() => setPreview(null)} />}
       {toast && <div className="adm-toast">{toast}</div>}
     </div>
   );
