@@ -271,6 +271,25 @@ func spaHandler(fsys fs.FS) http.Handler {
 	})
 }
 
+// corsMiddleware adds permissive CORS headers to every response and handles
+// pre-flight OPTIONS requests. This is needed because the Wails WebView has a
+// different origin than the launcher HTTP server (localhost:6969), so any
+// non-simple request (e.g. POST with Content-Type: image/jpeg) would be
+// blocked without the correct Access-Control headers.
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Expose-Headers", "X-Screenshot-At")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func serveDash() {
 	sub, err := fs.Sub(staticFiles, "static")
 	if err != nil {
@@ -322,7 +341,7 @@ func serveDash() {
 	mux.Handle("/", spaHandler(sub))
 
 	log.Printf("Dashboard: http://localhost%s  |  Admin: http://localhost%s/admin", dashPort, dashPort)
-	if err := http.ListenAndServe(dashPort, mux); err != nil {
+	if err := http.ListenAndServe(dashPort, corsMiddleware(mux)); err != nil {
 		log.Fatalf("Dashboard server: %v", err)
 	}
 }
