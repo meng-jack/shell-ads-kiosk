@@ -129,6 +129,11 @@ var (
 	// navCmdCh carries "next" or "prev" commands from the admin dashboard.
 	navCmdCh = make(chan string, 8)
 
+	// playlistChangedCh is signalled whenever the live playlist changes
+	// (ad activated, deactivated, cleared, etc.).  Buffered to 1 so rapid
+	// back-to-back mutations collapse into a single notification.
+	playlistChangedCh = make(chan struct{}, 1)
+
 	// mediaDir is where user-uploaded files are stored and served from.
 	mediaDir string
 
@@ -495,6 +500,9 @@ func handleSubmitAds(w http.ResponseWriter, r *http.Request) {
 func handleActivate(w http.ResponseWriter, r *http.Request) {
 	activated := dbMoveApprovedToLive()
 	log.Printf("Activate (Z-key): %d approved ad(s) → live", activated)
+	if activated > 0 {
+		signalPlaylistChanged()
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "activated": activated})
 }
@@ -609,6 +617,7 @@ func handleAdminReorder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "reorder failed", http.StatusInternalServerError)
 		return
 	}
+	signalPlaylistChanged()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
@@ -622,6 +631,7 @@ func handleAdminDeleteActive(w http.ResponseWriter, r *http.Request) {
 	}
 	deleteMediaFile(src)
 	log.Printf("Admin: deleted live ad %q", id)
+	signalPlaylistChanged()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
@@ -690,6 +700,9 @@ func handleAdminSetDuration(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("Admin: set duration of ad %q to %d ms", id, body.DurationMs)
+	// Signal regardless of status — if the ad is not live the fingerprint
+	// won't change anyway so the kiosk fetch is a no-op.
+	signalPlaylistChanged()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
@@ -904,6 +917,7 @@ func handleAdminActivateApproved(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("Admin: activated approved ad %q → live", id)
+	signalPlaylistChanged()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
@@ -916,6 +930,7 @@ func handleAdminDeactivateActive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("Admin: deactivated live ad %q → approved (unused)", id)
+	signalPlaylistChanged()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
@@ -926,6 +941,9 @@ func handleAdminClearActive(w http.ResponseWriter, r *http.Request) {
 		deleteMediaFile(ad.Src)
 	}
 	log.Printf("Admin: cleared %d live ad(s) from machine", n)
+	if n > 0 {
+		signalPlaylistChanged()
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "cleared": n})
 }
@@ -934,6 +952,9 @@ func handleAdminClearActive(w http.ResponseWriter, r *http.Request) {
 func handleAdminReload(w http.ResponseWriter, r *http.Request) {
 	activated := dbMoveApprovedToLive()
 	log.Printf("Admin: reload — %d approved ad(s) pushed live", activated)
+	if activated > 0 {
+		signalPlaylistChanged()
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "activated": activated})
 }
@@ -948,14 +969,28 @@ func handleAdminRestartKiosk(w http.ResponseWriter, r *http.Request) {
 
 // handleNavPoll is called by the kiosk frontend every ~1 s.
 // It blocks up to 2 s waiting for a nav command, then returns.
-// Response: {"cmd":"next"}, {"cmd":"prev"}, or {"cmd":"none"}.
+// Response: {"cmd":"next"}, {"cmd":"prev"}, {"cmd":"refresh"}, or {"cmd":"none"}.
 func handleNavPoll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	select {
 	case cmd := <-navCmdCh:
 		_ = json.NewEncoder(w).Encode(map[string]string{"cmd": cmd})
+	case <-playlistChangedCh:
+		// A live-playlist mutation happened — tell the kiosk to re-fetch
+		// immediately instead of waiting for its 60-second polling cycle.
+		_ = json.NewEncoder(w).Encode(map[string]string{"cmd": "refresh"})
 	case <-time.After(2 * time.Second):
 		_ = json.NewEncoder(w).Encode(map[string]string{"cmd": "none"})
+	}
+}
+
+// signalPlaylistChanged sends a non-blocking notification that the live
+// playlist has changed.  The nav-poll long-poll will pick it up within ~2 s
+// and return {"cmd":"refresh"} to the kiosk frontend.
+func signalPlaylistChanged() {
+	select {
+	case playlistChangedCh <- struct{}{}:
+	default: // a signal is already pending — no need to queue another
 	}
 }
 

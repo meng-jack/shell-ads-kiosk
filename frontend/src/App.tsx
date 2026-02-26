@@ -124,6 +124,10 @@ function App() {
   const localSrcsRef = useRef<Record<string, string>>({});
   const [activeSrc, setActiveSrc] = useState<string | undefined>(undefined);
 
+  // Fingerprint of the last playlist we passed to setAds: ordered "<id>:<durationMs>"
+  // pairs joined by ",".  Detects id additions/removals, reordering, and duration edits.
+  const playlistFingerprintRef = useRef<string>("");
+
   const exitTimer = useRef<number>();
   const advanceTimer = useRef<number>();
   const slotStartRef = useRef(Date.now());
@@ -203,8 +207,22 @@ function App() {
       // playlist so every slot starts with a cached local path already in
       // localSrcsRef — no blank frames, no remote-URL race.
       const full = buildPlaylist(external);
-      setAds(full);
-      setActiveIndex(0);
+
+      // Only call setAds when the playlist actually changed.
+      // Skipping the state update when nothing changed avoids restarting
+      // the carousel timer mid-display on no-op 60-second polls.
+      // Include durationMs so admin duration edits are picked up without
+      // needing an ID or order change to invalidate the fingerprint.
+      const fingerprint = full.map((a) => `${a.id}:${a.durationMs}`).join(",");
+      if (fingerprint !== playlistFingerprintRef.current) {
+        playlistFingerprintRef.current = fingerprint;
+        setAds(full);
+        // Do NOT reset activeIndex to 0 here.  Preserving the current
+        // carousel position means every ad in the playlist gets fair
+        // air-time across 60-second refresh boundaries.
+        // The carousel uses `activeIndex % ads.length` so it is always
+        // bounds-safe even when the playlist shrinks.
+      }
       setStatus("Playing live playlist");
       setLastRefresh(new Date());
 
@@ -323,6 +341,7 @@ function App() {
             const { cmd } = (await res.json()) as { cmd: string };
             if (cmd === "next") navigate(1);
             else if (cmd === "prev") navigate(-1);
+            else if (cmd === "refresh") void refreshPlaylist();
           }
         } catch {
           // Launcher unreachable — wait a bit before retrying
@@ -335,7 +354,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, refreshPlaylist]);
 
 
 
