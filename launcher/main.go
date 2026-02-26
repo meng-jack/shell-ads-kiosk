@@ -320,7 +320,14 @@ func serveDash() {
 	mux.HandleFunc("POST /api/upload-media", handleUploadMedia)             // public: upload media file as base64/text
 
 	// ── Serve locally-cached media files ──────────────────────────────────────────
-	mux.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.Dir(mediaDir))))
+	mux.HandleFunc("/media/", func(w http.ResponseWriter, r *http.Request) {
+		// Ensure HTML files are served with UTF-8 charset to prevent smart quotes
+		// and other Unicode characters from being misrendered.
+		if strings.HasSuffix(r.URL.Path, ".html") {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		}
+		http.StripPrefix("/media/", http.FileServer(http.Dir(mediaDir))).ServeHTTP(w, r)
+	})
 
 	// ── Admin auth ────────────────────────────────────────────────────────────
 	mux.HandleFunc("POST /api/admin/auth", handleAdminAuth)
