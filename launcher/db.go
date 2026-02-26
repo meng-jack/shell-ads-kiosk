@@ -58,7 +58,7 @@ func initDB() error {
 	// PocketBase admin UI on a separate port — operators can visit
 	// http://127.0.0.1:8090/_/ to inspect, edit, or hard-delete any record.
 	go func() {
-		if err := apis.Serve(pb, apis.ServeConfig{
+		if _, err := apis.Serve(pb, apis.ServeConfig{
 			HttpAddr:        "127.0.0.1:8090",
 			ShowStartBanner: false,
 		}); err != nil {

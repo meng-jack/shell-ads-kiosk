@@ -118,10 +118,6 @@ var (
 	// mediaDir is where user-uploaded files are stored and served from.
 	mediaDir string
 
-	// kiosk screenshot — latest JPEG sent by the kiosk frontend every ~5 s.
-	screenshotMu  sync.RWMutex
-	kioskScreenshot []byte
-	screenshotAt  time.Time
 )
 
 // ─── Admin auth ───────────────────────────────────────────────────────────────
@@ -307,7 +303,6 @@ func serveDash() {
 	mux.HandleFunc("POST /api/activate", handleActivate)
 	mux.HandleFunc("GET /api/playlist", handlePlaylist)
 	mux.HandleFunc("GET /api/kiosk/nav-poll", handleNavPoll)    // kiosk long-polls this
-	mux.HandleFunc("POST /api/kiosk/screenshot", handleKioskScreenshot) // kiosk posts screenshot
 	mux.HandleFunc("GET /api/submission-status", handleSubmissionStatus)  // public: poll ad status by IDs
 
 	// ── Serve locally-cached media files ──────────────────────────────────────────
@@ -671,31 +666,42 @@ func handleSubmissionStatus(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// handleKioskScreenshot receives a JPEG (or any image blob) from the kiosk
-// frontend, stores it in memory, and timestamps it. The admin dashboard polls
-// handleAdminKioskScreenshot to display it.
-func handleKioskScreenshot(w http.ResponseWriter, r *http.Request) {
-	const maxBytes = 2 << 20 // 2 MB — more than enough for a low-res JPEG
-	data, err := io.ReadAll(io.LimitReader(r.Body, maxBytes))
-	if err != nil || len(data) == 0 {
-		http.Error(w, "bad body", http.StatusBadRequest)
-		return
+// captureDesktopScreenshot takes a JPEG screenshot of the current desktop by
+// trying several common screenshot tools in order. Returns the raw JPEG bytes
+// and the time the shot was taken.
+func captureDesktopScreenshot() ([]byte, time.Time, error) {
+	now := time.Now()
+	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("shellnews_shot_%d.jpg", os.Getpid()))
+	defer os.Remove(tmp)
+
+	type toolDef struct {
+		name string
+		args []string
 	}
-	screenshotMu.Lock()
-	kioskScreenshot = data
-	screenshotAt = time.Now()
-	screenshotMu.Unlock()
-	w.WriteHeader(http.StatusNoContent)
+	tools := []toolDef{
+		{"scrot", []string{"-q", "70", tmp}},
+		{"import", []string{"-window", "root", "-quality", "70", tmp}},
+		{"ffmpeg", []string{"-y", "-f", "x11grab", "-i", ":0.0", "-frames:v", "1", "-qscale:v", "8", tmp}},
+	}
+	for _, t := range tools {
+		cmd := exec.Command(t.name, t.args...)
+		cmd.Env = os.Environ() // inherit DISPLAY, XAUTHORITY, etc.
+		if err := cmd.Run(); err == nil {
+			data, err := os.ReadFile(tmp)
+			if err == nil && len(data) > 0 {
+				return data, now, nil
+			}
+		}
+	}
+	return nil, now, fmt.Errorf("no screenshot tool found; tried scrot, import (ImageMagick), ffmpeg")
 }
 
-// handleAdminKioskScreenshot serves the latest kiosk screenshot as a JPEG.
-// Returns 204 No Content when no screenshot has been received yet.
+// handleAdminKioskScreenshot captures the current desktop and serves it as a JPEG.
+// Returns 204 No Content when no screenshot tool is available.
 func handleAdminKioskScreenshot(w http.ResponseWriter, r *http.Request) {
-	screenshotMu.RLock()
-	data := kioskScreenshot
-	at := screenshotAt
-	screenshotMu.RUnlock()
-	if len(data) == 0 {
+	data, at, err := captureDesktopScreenshot()
+	if err != nil {
+		log.Printf("Screenshot: %v", err)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
