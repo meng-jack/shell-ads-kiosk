@@ -277,8 +277,8 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
       const extErr = validateUrlExt(finalUrl, type, cfg);
       if (extErr) return extErr;
     }
-    if (duration < 1 || duration > 120)
-      return "Duration must be between 1 and 120 seconds.";
+    if (duration < 1 || duration > 30)
+      return "Duration must be between 1 and 30 seconds.";
     return null;
   }
 
@@ -531,7 +531,7 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
           className="sp-input sp-input--num"
           type="number"
           min={1}
-          max={120}
+          max={30}
           value={duration}
           onChange={(e) => setDuration(Number(e.target.value))}
         />
