@@ -397,8 +397,6 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
           ⊹ Paste URL
         </button>
       </div>
-
-      {/* ── Upload panel ──────────────────────────────────────────── */}
       {mode === "upload" && (
         <div className="sp-upload-zone">
           <p className="sp-upload-note">
@@ -514,8 +512,6 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
           )}
         </div>
       )}
-
-      {/* ── URL panel ─────────────────────────────────────────────── */}
       {mode === "url" && (
         <div className="sp-field">
           <label className="sp-label" htmlFor="sp-url">
@@ -533,8 +529,6 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
           <span className="sp-url-note">{cfg.urlHint}</span>
         </div>
       )}
-
-      {/* ── Duration ──────────────────────────────────────────────── */}
       <div className="sp-field sp-field--row">
         <label className="sp-label" htmlFor="sp-dur">
           Duration (sec)
@@ -543,13 +537,12 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
           id="sp-dur"
           className="sp-input sp-input--num"
           type="number"
-          min={1} 
+          min={1}
           max={30}
           value={duration}
           onChange={(e) => setDuration(Number(e.target.value))}
         />
       </div>
-      {/* ── Preview button ───────────────────────────────────────────── */}
       {previewSrc && (
         <button
           type="button"
@@ -559,10 +552,7 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
           ⊙ Preview
         </button>
       )}
-      {/* ── Error ─────────────────────────────────────────────────── */}
       {error && <p className="sp-error">⚠ {error}</p>}
-
-      {/* ── Submit ────────────────────────────────────────────────── */}
       <button
         className={`sp-btn${ok ? " sp-btn--ok" : ""}`}
         type="submit"

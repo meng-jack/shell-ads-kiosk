@@ -176,6 +176,9 @@ function App() {
         Array.isArray(payload) && payload.length ? normalizeAds(payload) : [];
 
       if (external.length === 0) {
+        // Clear the fingerprint so the next successful fetch always re-instates
+        // the real playlist, even if it is identical to a previously-seen one.
+        playlistFingerprintRef.current = "";
         setAds(buildPlaylist([]));
         setStatus("Startup Shell — standalone mode");
         return;
@@ -232,6 +235,12 @@ function App() {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[playlist] fetch failed:", msg);
       setStatus(`Fetch error: ${msg}`);
+      // Reset the fingerprint so the next successful fetch unconditionally
+      // calls setAds and restores the live carousel.  Without this, a
+      // transient error leaves the ref pointing at the last good fingerprint
+      // while ads state has been replaced with the Startup-Shell-only
+      // fallback, permanently suppressing the real playlist.
+      playlistFingerprintRef.current = "";
       setAds(buildPlaylist([]));
     } finally {
       refreshingRef.current = false;
