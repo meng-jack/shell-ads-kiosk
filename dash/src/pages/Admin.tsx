@@ -5,7 +5,6 @@ import {
   getToken,
   setToken,
   NotFoundError,
-  fetchKioskScreenshot,
   type AdminStats,
   type KioskAd,
   type UpdateStatus,
@@ -134,55 +133,6 @@ function Preview({ ad, onClose }: { ad: KioskAd; onClose: () => void }) {
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── Kiosk screenshot panel ─────────────────────────────────────────────────────────
-
-function KioskScreenshot() {
-  const [imgUrl, setImgUrl] = useState<string | null>(null);
-  const [takenAt, setTakenAt] = useState<string>("");
-  const prevUrlRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const token = getToken();
-    if (!token) return;
-
-    async function refresh() {
-      const result = await fetchKioskScreenshot(token!);
-      if (!result) return;
-      // Revoke previous object URL to prevent memory leaks
-      if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
-      const url = URL.createObjectURL(result.blob);
-      prevUrlRef.current = url;
-      setImgUrl(url);
-      setTakenAt(result.takenAt);
-    }
-
-    refresh();
-    const id = window.setInterval(refresh, 5000);
-    return () => {
-      clearInterval(id);
-      if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
-    };
-  }, []);
-
-  return (
-    <div className="adm-screenshot">
-      <div className="adm-screenshot-header">
-        <span className="adm-stat-label">Live Kiosk</span>
-        {takenAt && (
-          <span className="adm-screenshot-time">
-            {new Date(takenAt).toLocaleTimeString()}
-          </span>
-        )}
-      </div>
-      {imgUrl ? (
-        <img src={imgUrl} alt="Kiosk screenshot" className="adm-screenshot-img" />
-      ) : (
-        <div className="adm-screenshot-placeholder">No screenshot yet</div>
-      )}
     </div>
   );
 }
@@ -836,9 +786,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         onNext={kioskNext}
         onPrev={kioskPrev}
       />
-
-      {/* Kiosk screenshot */}
-      <KioskScreenshot />
 
       {/* Update */}
       <UpdatePanel />

@@ -81,19 +81,6 @@ export async function submissionStatus(
   return res.json() as Promise<SubmissionStatusEntry[]>;
 }
 
-/** Fetch the latest kiosk screenshot blob. Returns null when not available (204). */
-export async function fetchKioskScreenshot(
-  token: string,
-): Promise<{ blob: Blob; takenAt: string } | null> {
-  const res = await fetch("/api/admin/kiosk-screenshot", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (res.status === 204 || !res.ok) return null;
-  const blob = await res.blob();
-  const takenAt = res.headers.get("X-Screenshot-At") ?? "";
-  return { blob, takenAt };
-}
-
 export type UpdateStage =
   | "idle"
   | "checking"

@@ -329,7 +329,6 @@ func serveDash() {
 	mux.HandleFunc("POST /api/admin/kiosk/prev", requireAdmin(handleAdminKioskPrev))
 	mux.HandleFunc("POST /api/admin/trigger-update", requireAdmin(handleAdminTriggerUpdate))
 	mux.HandleFunc("GET /api/admin/update-status", requireAdmin(handleAdminUpdateStatus))
-	mux.HandleFunc("GET /api/admin/kiosk-screenshot", requireAdmin(handleAdminKioskScreenshot))
 	mux.HandleFunc("DELETE /api/admin/logout", requireAdmin(handleAdminLogout))
 
 	// ── SPA fallback ──────────────────────────────────────────────────────────
@@ -664,51 +663,6 @@ func handleSubmissionStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
-}
-
-// captureDesktopScreenshot takes a JPEG screenshot of the current desktop by
-// trying several common screenshot tools in order. Returns the raw JPEG bytes
-// and the time the shot was taken.
-func captureDesktopScreenshot() ([]byte, time.Time, error) {
-	now := time.Now()
-	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("shellnews_shot_%d.jpg", os.Getpid()))
-	defer os.Remove(tmp)
-
-	type toolDef struct {
-		name string
-		args []string
-	}
-	tools := []toolDef{
-		{"scrot", []string{"-q", "70", tmp}},
-		{"import", []string{"-window", "root", "-quality", "70", tmp}},
-		{"ffmpeg", []string{"-y", "-f", "x11grab", "-i", ":0.0", "-frames:v", "1", "-qscale:v", "8", tmp}},
-	}
-	for _, t := range tools {
-		cmd := exec.Command(t.name, t.args...)
-		cmd.Env = os.Environ() // inherit DISPLAY, XAUTHORITY, etc.
-		if err := cmd.Run(); err == nil {
-			data, err := os.ReadFile(tmp)
-			if err == nil && len(data) > 0 {
-				return data, now, nil
-			}
-		}
-	}
-	return nil, now, fmt.Errorf("no screenshot tool found; tried scrot, import (ImageMagick), ffmpeg")
-}
-
-// handleAdminKioskScreenshot captures the current desktop and serves it as a JPEG.
-// Returns 204 No Content when no screenshot tool is available.
-func handleAdminKioskScreenshot(w http.ResponseWriter, r *http.Request) {
-	data, at, err := captureDesktopScreenshot()
-	if err != nil {
-		log.Printf("Screenshot: %v", err)
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("X-Screenshot-At", at.UTC().Format(time.RFC3339))
-	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(data)
 }
 
 func handleAdminApproveSubmitted(w http.ResponseWriter, r *http.Request) {
