@@ -69,7 +69,7 @@
     opacity: 1;
 }
 
-/* ── Body — strict 16:9 ────────────────────────────────────────────────────── */
+/* ── Body — strict 16:9 for image/video ────────────────────────────────────── */
 .pm-body {
     width: 100%;
     aspect-ratio: 16 / 9;
@@ -79,6 +79,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+/* ── Body — natural height for html/web content ────────────────────────────── */
+.pm-body--html {
+    aspect-ratio: unset;
+    height: 540px;
+    min-height: 300px;
 }
 
 .pm-img {

@@ -121,7 +121,14 @@ export default function AdQueue({ ads, fullView = false, onRetract }: Props) {
   }
 
   return (
-    <div className="aq">
+    <>
+      {previewAd && (
+        <PreviewModal
+          item={{ name: previewAd.name, type: previewAd.type, src: previewAd.url }}
+          onClose={() => setPreviewAd(null)}
+        />
+      )}
+      <div className="aq">
       <p className="aq-heading">Submission history</p>
 
       {[...ads].map((ad) => (
@@ -163,6 +170,5 @@ export default function AdQueue({ ads, fullView = false, onRetract }: Props) {
           </div>
         </div>
       ))}
-    </div>
-  );
+    </div>    </>  );
 }

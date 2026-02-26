@@ -13,6 +13,8 @@ interface Props {
 }
 
 export default function PreviewModal({ item, onClose }: Props) {
+  const isHtml = item.type === "html";
+
   return (
     <div
       className="pm-backdrop"
@@ -29,8 +31,8 @@ export default function PreviewModal({ item, onClose }: Props) {
           </button>
         </div>
 
-        {/* 16:9 body */}
-        <div className="pm-body">
+        {/* 16:9 body for image/video; natural height for html */}
+        <div className={isHtml ? "pm-body pm-body--html" : "pm-body"}>
           {!item.src && (
             <p className="pm-no-src">No preview available — media not yet cached.</p>
           )}
