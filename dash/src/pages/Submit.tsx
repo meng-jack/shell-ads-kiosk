@@ -82,11 +82,11 @@ function LoginGate() {
 function ProfileBar({
   user,
   view,
-  onToggleView,
+  onSetView,
 }: {
   user: GoogleUser;
-  view: "submit" | "history";
-  onToggleView: () => void;
+  view: "submit" | "history" | "live";
+  onSetView: (v: "submit" | "history" | "live") => void;
 }) {
   const { signOut } = useAuth();
   return (
@@ -104,11 +104,25 @@ function ProfileBar({
         <span className="sub-profile-email">{user.email}</span>
       </div>
       <button
+        className={`sub-profile-nav${view === "submit" ? " sub-profile-nav--active" : ""}`}
+        type="button"
+        onClick={() => onSetView("submit")}
+      >
+        Submit News
+      </button>
+      <button
         className={`sub-profile-nav${view === "history" ? " sub-profile-nav--active" : ""}`}
         type="button"
-        onClick={onToggleView}
+        onClick={() => onSetView("history")}
       >
-        {view === "history" ? "Submit News" : "My Submissions"}
+        My Submissions
+      </button>
+      <button
+        className={`sub-profile-nav${view === "live" ? " sub-profile-nav--active" : ""}`}
+        type="button"
+        onClick={() => onSetView("live")}
+      >
+        Live Now
       </button>
       <button className="sub-profile-signout" type="button" onClick={signOut}>
         Sign out
@@ -154,6 +168,15 @@ export default function Submit() {
       // Dev mode — launcher not running
     }
     // Refresh immediately after submit so the queue updates
+    await fetchSubmissions(user!.email);
+  }
+
+  async function handleRetract(id: string) {
+    try {
+      await retractMySubmission(id);
+    } catch {
+      // Best-effort — ignore network errors
+    }
     await fetchSubmissions(user!.email);
   }
 
