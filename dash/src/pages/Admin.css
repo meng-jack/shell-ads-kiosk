@@ -506,11 +506,96 @@
     color: #93c5fd;
     opacity: 1;
 }
-.adm-icon-btn--deactivate:hover:not(:disabled) {
-    background: rgba(251, 191, 36, 0.15);
-    border-color: rgba(251, 191, 36, 0.5);
-    color: #fde68a;
+.adm-icon-btn--preview:hover:not(:disabled) {
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.5);
+    color: #cbd5e1;
     opacity: 1;
+}
+
+/* ── Preview modal ────────────────────────────────────────────────── */
+.adm-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.80);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
+    padding: 24px;
+}
+
+.adm-modal {
+    background: #180e0e;
+    border: 1px solid var(--line-hi);
+    width: 100%;
+    max-width: 860px;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.adm-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+}
+
+.adm-modal-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.adm-modal-name {
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.adm-modal-body {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0d0808;
+    min-height: 0;
+}
+
+.adm-preview-img {
+    max-width: 100%;
+    max-height: 80vh;
+    object-fit: contain;
+    display: block;
+}
+
+.adm-preview-video {
+    max-width: 100%;
+    max-height: 80vh;
+    display: block;
+}
+
+.adm-preview-iframe {
+    width: 100%;
+    height: 75vh;
+    border: none;
+    display: block;
+}
+
+.adm-modal-no-src {
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0.45;
+    padding: 40px;
 }
 
 /* ── Status badges (used in Unused ads row meta) ─────────────────────────── */

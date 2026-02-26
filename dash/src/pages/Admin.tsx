@@ -79,6 +79,67 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
+// ─── Preview modal ───────────────────────────────────────────────────────────
+
+function PreviewModal({
+  ad,
+  onClose,
+}: {
+  ad: KioskAd;
+  onClose: () => void;
+}) {
+  function handleBackdrop(e: React.MouseEvent) {
+    if (e.target === e.currentTarget) onClose();
+  }
+  return (
+    <div className="adm-modal-backdrop" onClick={handleBackdrop}>
+      <div className="adm-modal">
+        <div className="adm-modal-header">
+          <div className="adm-modal-title">
+            <span className="adm-modal-name">{ad.name}</span>
+            <span className={`adm-type adm-type--${ad.type}`}>{ad.type}</span>
+          </div>
+          <button
+            className="adm-icon-btn"
+            onClick={onClose}
+            aria-label="Close"
+            title="Close"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="adm-modal-body">
+          {ad.type === "image" && ad.src && (
+            <img className="adm-preview-img" src={ad.src} alt={ad.name} />
+          )}
+          {ad.type === "video" && ad.src && (
+            <video
+              className="adm-preview-video"
+              src={ad.src}
+              controls
+              autoPlay
+              loop
+              playsInline
+            />
+          )}
+          {ad.type === "html" && ad.src && (
+            <iframe
+              className="adm-preview-iframe"
+              src={ad.src}
+              title={ad.name}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+              referrerPolicy="no-referrer"
+            />
+          )}
+          {!ad.src && (
+            <p className="adm-modal-no-src">No preview available — media not yet cached.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Ad row (generic) ─────────────────────────────────────────────────────────
 
 interface AdRowProps {
@@ -92,6 +153,7 @@ interface AdRowProps {
   onApprove?: () => void;    // submitted → approved (stays unused, moves to top)
   onActivate?: () => void;   // approved → live
   onDeactivate?: () => void; // active → back to unused/approved
+  onPreview?: () => void;
 }
 
 function AdRow({
@@ -105,6 +167,7 @@ function AdRow({
   onApprove,
   onActivate,
   onDeactivate,
+  onPreview,
 }: AdRowProps) {
   return (
     <div className={`adm-row adm-row--${stage}`}>
@@ -182,6 +245,15 @@ function AdRow({
             title="Push live"
           >
             ▶
+          </button>
+        )}
+        {onPreview && (
+          <button
+            className="adm-icon-btn adm-icon-btn--preview"
+            onClick={onPreview}
+            title="Preview"
+          >
+            ⊙
           </button>
         )}
         <button
@@ -481,6 +553,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [previewAd, setPreviewAd] = useState<KioskAd | null>(null);
   const toastTimer = useRef<number>();
 
   const showToast = useCallback((msg: string) => {
@@ -698,6 +771,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   return (
     <div className="adm-wrap">
+      {previewAd && (
+        <PreviewModal ad={previewAd} onClose={() => setPreviewAd(null)} />
+      )}
       {/* Header */}
       <div className="adm-header">
         <div>
@@ -760,6 +836,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 key={ad.id}
                 ad={ad}
                 stage="approved"
+                onPreview={() => setPreviewAd(ad)}
                 onActivate={() => activateApproved(ad.id)}
                 onDelete={() => deleteApproved(ad.id)}
               />
@@ -770,6 +847,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 key={ad.id}
                 ad={ad}
                 stage="submitted"
+                onPreview={() => setPreviewAd(ad)}
                 onApprove={() => approveSubmitted(ad.id)}
                 onDelete={() => deleteSubmitted(ad.id)}
               />
@@ -808,6 +886,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 index={i}
                 total={active.length}
                 stage="active"
+                onPreview={() => setPreviewAd(ad)}
                 onMoveUp={() => move(i, -1)}
                 onMoveDown={() => move(i, 1)}
                 onDeactivate={() => deactivateActive(ad.id)}
@@ -848,6 +927,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                     </span>
                   </div>
                   <div className="adm-row-actions">
+                    <button
+                      className="adm-icon-btn adm-icon-btn--preview"
+                      onClick={() => setPreviewAd(ad)}
+                      title="Preview"
+                    >
+                      ⊙
+                    </button>
                     <button
                       className="adm-icon-btn adm-icon-btn--del"
                       onClick={() => deleteDenied(ad.id)}
