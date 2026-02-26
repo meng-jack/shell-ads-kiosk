@@ -79,64 +79,6 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-// ─── Preview panel ────────────────────────────────────────────────────────────
-
-function Preview({ ad, onClose }: { ad: KioskAd; onClose: () => void }) {
-  return (
-    <div className="adm-preview-overlay" onClick={onClose}>
-      <div className="adm-preview-box" onClick={(e) => e.stopPropagation()}>
-        <div className="adm-preview-header">
-          <span className="adm-preview-title">{ad.name}</span>
-          <button className="adm-icon-btn" onClick={onClose}>
-            ✕
-          </button>
-        </div>
-        <div className="adm-preview-stage">
-          {ad.type === "image" && ad.src && (
-            <img src={ad.src} alt={ad.name} className="adm-preview-img" />
-          )}
-          {ad.type === "video" && ad.src && (
-            <video
-              src={ad.src}
-              className="adm-preview-video"
-              autoPlay
-              muted
-              loop
-              playsInline
-              controls={false}
-            />
-          )}
-          {ad.type === "html" && ad.src && (
-            <iframe
-              src={ad.src}
-              className="adm-preview-iframe"
-              sandbox="allow-scripts allow-same-origin"
-              title={ad.name}
-            />
-          )}
-        </div>
-        <div className="adm-preview-meta">
-          <span className={`adm-type adm-type--${ad.type}`}>{ad.type}</span>
-          <span className="adm-row-dur">
-            {(ad.durationMs / 1000).toFixed(0)}s
-          </span>
-          {ad.src && (
-            <a
-              href={ad.src}
-              target="_blank"
-              rel="noreferrer"
-              className="adm-row-url"
-              title={ad.src}
-            >
-              {truncate(ad.src, 52)}
-            </a>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Ad row (generic) ─────────────────────────────────────────────────────────
 
 interface AdRowProps {
@@ -144,7 +86,6 @@ interface AdRowProps {
   index?: number;
   total?: number;
   stage: "active" | "approved" | "submitted";
-  onPreview: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   onDelete: () => void;
@@ -158,7 +99,6 @@ function AdRow({
   index,
   total,
   stage,
-  onPreview,
   onMoveUp,
   onMoveDown,
   onDelete,
@@ -197,13 +137,6 @@ function AdRow({
         </span>
       </div>
       <div className="adm-row-actions">
-        <button
-          className="adm-icon-btn adm-icon-btn--preview"
-          onClick={onPreview}
-          title="Preview"
-        >
-          ⊙
-        </button>
         {stage === "active" && (
           <>
             <button
@@ -548,7 +481,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [preview, setPreview] = useState<KioskAd | null>(null);
   const toastTimer = useRef<number>();
 
   const showToast = useCallback((msg: string) => {
@@ -828,7 +760,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 key={ad.id}
                 ad={ad}
                 stage="approved"
-                onPreview={() => setPreview(ad)}
                 onActivate={() => activateApproved(ad.id)}
                 onDelete={() => deleteApproved(ad.id)}
               />
@@ -839,7 +770,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 key={ad.id}
                 ad={ad}
                 stage="submitted"
-                onPreview={() => setPreview(ad)}
                 onApprove={() => approveSubmitted(ad.id)}
                 onDelete={() => deleteSubmitted(ad.id)}
               />
@@ -878,7 +808,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 index={i}
                 total={active.length}
                 stage="active"
-                onPreview={() => setPreview(ad)}
                 onMoveUp={() => move(i, -1)}
                 onMoveDown={() => move(i, 1)}
                 onDeactivate={() => deactivateActive(ad.id)}
@@ -934,7 +863,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </>
       )}
 
-      {preview && <Preview ad={preview} onClose={() => setPreview(null)} />}
       {toast && <div className="adm-toast">{toast}</div>}
     </div>
   );
