@@ -8,7 +8,7 @@ launcher/launcher.exe
 # launcher/static/assets/ is populated by CI (dash/dist → launcher/static)
 # and must NOT be committed — it is embedded at build time.
 launcher/static/assets
-
+.idea/**
 # Dashboard build output
 dash/dist
 dash/node_modules
