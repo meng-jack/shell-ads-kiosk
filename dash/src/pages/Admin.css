@@ -521,6 +521,33 @@
     border-color: var(--cream);
     opacity: 1;
 }
+.adm-icon-btn--deactivate:hover:not(:disabled) {
+    background: rgba(251, 191, 36, 0.15);
+    border-color: rgba(251, 191, 36, 0.5);
+    color: #fde68a;
+    opacity: 1;
+}
+
+/* ── Status badges (used in Unused ads row meta) ─────────────────────────── */
+.adm-badge {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+.adm-badge--approved {
+    background: rgba(34, 197, 94, 0.12);
+    color: #86efac;
+    border: 1px solid rgba(34, 197, 94, 0.2);
+}
+.adm-badge--pending {
+    background: rgba(253, 224, 71, 0.1);
+    color: #fde68a;
+    border: 1px solid rgba(253, 224, 71, 0.2);
+}
 
 /* ── Preview overlay ─────────────────────────────────────────────────────── */
 .adm-preview-overlay {

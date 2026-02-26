@@ -118,6 +118,9 @@ var (
 
 	// navCmdCh carries "next" or "prev" commands from the admin dashboard.
 	navCmdCh = make(chan string, 8)
+
+	// mediaDir is where user-uploaded files are stored and served from.
+	mediaDir string
 )
 
 // ─── Admin auth ───────────────────────────────────────────────────────────────
@@ -269,10 +272,20 @@ func serveDash() {
 	mux := http.NewServeMux()
 
 	// ── Public API ────────────────────────────────────────────────────────────
+	// ── Initialise media upload directory ───────────────────────────────────
+	mediaDir = filepath.Join(exeDirectory(), "media")
+	_ = os.MkdirAll(mediaDir, 0o755)
+
 	mux.HandleFunc("POST /api/submit-ads", handleSubmitAds)
 	mux.HandleFunc("POST /api/activate", handleActivate)
 	mux.HandleFunc("GET /api/playlist", handlePlaylist)
 	mux.HandleFunc("GET /api/kiosk/nav-poll", handleNavPoll) // kiosk long-polls this
+
+	// ── Public file upload (any user can upload; admin must approve) ─────────
+	mux.HandleFunc("POST /api/upload", handleUpload)
+
+	// ── Serve uploaded media files ────────────────────────────────────────────
+	mux.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.Dir(mediaDir))))
 
 	// ── Admin auth ────────────────────────────────────────────────────────────
 	mux.HandleFunc("POST /api/admin/auth", handleAdminAuth)
@@ -286,6 +299,7 @@ func serveDash() {
 	mux.HandleFunc("DELETE /api/admin/approved/{id}", requireAdmin(handleAdminDeleteApproved))
 	mux.HandleFunc("POST /api/admin/submitted/{id}/approve", requireAdmin(handleAdminApproveSubmitted))
 	mux.HandleFunc("POST /api/admin/approved/{id}/activate", requireAdmin(handleAdminActivateApproved))
+	mux.HandleFunc("POST /api/admin/active/{id}/deactivate", requireAdmin(handleAdminDeactivateActive))
 	mux.HandleFunc("POST /api/admin/clear", requireAdmin(handleAdminClearActive))
 	mux.HandleFunc("POST /api/admin/reload", requireAdmin(handleAdminReload))
 	mux.HandleFunc("POST /api/admin/restart-kiosk", requireAdmin(handleAdminRestartKiosk))
@@ -302,6 +316,61 @@ func serveDash() {
 	if err := http.ListenAndServe(dashPort, mux); err != nil {
 		log.Fatalf("Dashboard server: %v", err)
 	}
+}
+
+// handleUpload accepts a multipart file upload (field name "file"), saves it to
+// the media directory with a random filename, and returns {"url":"/media/<file>"}.
+// This endpoint is intentionally public so regular users can upload ad media
+// before submitting; an admin must still approve the submitted ad.
+func handleUpload(w http.ResponseWriter, r *http.Request) {
+	const maxUploadBytes = 500 << 20 // 500 MB
+	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+		http.Error(w, `{"error":"file too large or bad form"}`, http.StatusBadRequest)
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, `{"error":"missing file field"}`, http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	allowed := map[string]bool{
+		".png": true, ".jpg": true, ".jpeg": true, ".webp": true, ".gif": true,
+		".mp4": true, ".webm": true,
+		".html": true, ".htm": true,
+	}
+	if !allowed[ext] {
+		http.Error(w, `{"error":"file type not allowed"}`, http.StatusBadRequest)
+		return
+	}
+
+	if mediaDir == "" {
+		http.Error(w, `{"error":"server media dir not configured"}`, http.StatusInternalServerError)
+		return
+	}
+
+	filename := generateToken() + ext
+	destPath := filepath.Join(mediaDir, filename)
+
+	out, err := os.Create(destPath)
+	if err != nil {
+		log.Printf("Upload: create file: %v", err)
+		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		return
+	}
+	written, copyErr := io.Copy(out, file)
+	out.Close()
+	if copyErr != nil {
+		os.Remove(destPath)
+		log.Printf("Upload: write file: %v", copyErr)
+		http.Error(w, `{"error":"server error"}`, http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Upload: saved %s (%d bytes)", filename, written)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"url": "/media/" + filename})
 }
 
 // handleSubmitAds queues incoming ads as "submitted" — not visible to the kiosk
@@ -361,8 +430,18 @@ func handlePlaylist(w http.ResponseWriter, r *http.Request) {
 		ads = []kioskAd{}
 	}
 
+	// Resolve /media/ relative paths to absolute URLs so the kiosk's HTTP client
+	// can download them. The kiosk always runs on the same machine as the launcher.
+	resolved := make([]kioskAd, len(ads))
+	for i, ad := range ads {
+		if strings.HasPrefix(ad.Src, "/media/") {
+			ad.Src = "http://localhost" + dashPort + ad.Src
+		}
+		resolved[i] = ad
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(ads)
+	_ = json.NewEncoder(w).Encode(resolved)
 }
 
 // ─── Admin API handlers ───────────────────────────────────────────────────────
@@ -610,6 +689,33 @@ func handleAdminActivateApproved(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("Admin: activated approved %q → live", id)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// handleAdminDeactivateActive moves a live ad back to the approved (unused) queue.
+func handleAdminDeactivateActive(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	playlistMu.Lock()
+	found := false
+	remaining := forcedAds[:0:0]
+	for _, a := range forcedAds {
+		if a.ID == id {
+			approvedAds = append(approvedAds, a)
+			found = true
+		} else {
+			remaining = append(remaining, a)
+		}
+	}
+	if found {
+		forcedAds = remaining
+	}
+	playlistMu.Unlock()
+	if !found {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+	log.Printf("Admin: deactivated %q → approved (unused)", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }

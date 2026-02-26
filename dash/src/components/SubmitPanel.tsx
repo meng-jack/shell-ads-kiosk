@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 import type { AdType, PendingAd } from "../types";
+import { uploadFile as uploadFileToServer } from "../api";
 import "./SubmitPanel.css";
 
-const FILE_IO_MAX = 4 * 1024 * 1024 * 1024;
+const FILE_IO_MAX = 500 * 1024 * 1024; // 500 MB server limit
 
 // ── Per-type configuration ─────────────────────────────────────────────────
 const TYPE_CONFIG: Record<
@@ -63,43 +64,6 @@ function fmtBytes(b: number): string {
   if (b >= 1e9) return (b / 1e9).toFixed(1) + " GB";
   if (b >= 1e6) return (b / 1e6).toFixed(1) + " MB";
   return Math.round(b / 1e3) + " KB";
-}
-
-function uploadToFileIo(
-  fd: FormData,
-  onProgress: (pct: number) => void,
-  signal: AbortSignal,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "https://file.io/?expires=14d");
-    xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable)
-        onProgress(Math.round((e.loaded / e.total) * 100));
-    });
-    xhr.addEventListener("load", () => {
-      try {
-        const data = JSON.parse(xhr.responseText) as {
-          success: boolean;
-          link?: string;
-          message?: string;
-        };
-        if (data.success && data.link) resolve(data.link);
-        else
-          reject(
-            new Error(data.message ?? "Upload failed — no link returned."),
-          );
-      } catch {
-        reject(new Error("Unexpected response from file.io."));
-      }
-    });
-    xhr.addEventListener("error", () =>
-      reject(new Error("Network error — check your connection and try again.")),
-    );
-    xhr.addEventListener("abort", () => reject(new Error("Upload cancelled.")));
-    signal.addEventListener("abort", () => xhr.abort());
-    xhr.send(fd);
-  });
 }
 
 // Validate a File against the allowed extensions + MIME types for a given type.
@@ -183,7 +147,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
       return;
     }
     if (file.size > FILE_IO_MAX) {
-      setError(`File too large (${fmtBytes(file.size)}) — max 4 GB.`);
+      setError(`File too large (${fmtBytes(file.size)}) — max 500 MB.`);
       setUploadFile(null);
       if (fileRef.current) fileRef.current.value = "";
       return;
@@ -197,11 +161,9 @@ export default function SubmitPanel({ onSubmit }: Props) {
     setUploading(true);
     setError(null);
     setUploadPct(0);
-    const fd = new FormData();
-    fd.append("file", uploadFile);
     try {
-      const link = await uploadToFileIo(
-        fd,
+      const link = await uploadFileToServer(
+        uploadFile,
         setUploadPct,
         abortRef.current.signal,
       );
@@ -225,10 +187,13 @@ export default function SubmitPanel({ onSubmit }: Props) {
       return mode === "upload"
         ? "Upload a file first, or switch to Paste URL."
         : "URL is required.";
-    try {
-      new URL(finalUrl);
-    } catch {
-      return "Enter a valid URL (must start with https://).";
+    // Server uploads return a /media/ path — skip absolute URL validation for those.
+    if (mode !== "upload" || !finalUrl.startsWith("/media/")) {
+      try {
+        new URL(finalUrl);
+      } catch {
+        return "Enter a valid URL (must start with https://).";
+      }
     }
     if (mode === "url") {
       const extErr = validateUrlExt(finalUrl, cfg);
@@ -340,17 +305,8 @@ export default function SubmitPanel({ onSubmit }: Props) {
       {mode === "upload" && (
         <div className="sp-upload-zone">
           <p className="sp-upload-note">
-            Your browser uploads directly to{" "}
-            <a
-              className="sp-link"
-              href="https://file.io"
-              target="_blank"
-              rel="noreferrer"
-            >
-              file.io
-            </a>{" "}
-            — the file never passes through this server or the Cloudflare
-            tunnel. Max <strong>4 GB</strong>. Link expires after 14 days.
+            Your file is uploaded securely to this server. Max{" "}
+            <strong>500 MB</strong>.
           </p>
 
           {!uploadedUrl ? (
@@ -390,7 +346,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
                   className="sp-upload-btn"
                   onClick={handleUpload}
                 >
-                  Upload to file.io
+                  Upload file
                 </button>
               )}
 

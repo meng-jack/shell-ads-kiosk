@@ -148,8 +148,9 @@ interface AdRowProps {
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   onDelete: () => void;
-  onApprove?: () => void; // submitted → approved
-  onActivate?: () => void; // approved → active (one at a time) or active=push
+  onApprove?: () => void;    // submitted → approved (stays unused, moves to top)
+  onActivate?: () => void;   // approved → live
+  onDeactivate?: () => void; // active → back to unused/approved
 }
 
 function AdRow({
@@ -163,13 +164,16 @@ function AdRow({
   onDelete,
   onApprove,
   onActivate,
+  onDeactivate,
 }: AdRowProps) {
   return (
-    <div className="adm-row">
+    <div className={`adm-row adm-row--${stage}`}>
       {stage === "active" ? (
         <span className="adm-row-num">{(index ?? 0) + 1}</span>
+      ) : stage === "approved" ? (
+        <span className="adm-row-num adm-row-num--approved">✓</span>
       ) : (
-        <span className={`adm-row-num adm-row-num--${stage}`}>•</span>
+        <span className="adm-row-num adm-row-num--submitted">•</span>
       )}
       <div className="adm-row-info">
         <span className="adm-row-name">{ad.name}</span>
@@ -178,6 +182,12 @@ function AdRow({
           <span className="adm-row-dur">
             {(ad.durationMs / 1000).toFixed(0)}s
           </span>
+          {stage === "approved" && (
+            <span className="adm-badge adm-badge--approved">approved</span>
+          )}
+          {stage === "submitted" && (
+            <span className="adm-badge adm-badge--pending">pending</span>
+          )}
           {ad.src && (
             <span className="adm-row-url" title={ad.src}>
               {truncate(ad.src, 38)}
@@ -211,6 +221,15 @@ function AdRow({
             >
               ↓
             </button>
+            {onDeactivate && (
+              <button
+                className="adm-icon-btn adm-icon-btn--deactivate"
+                onClick={onDeactivate}
+                title="Move back to Unused"
+              >
+                ←
+              </button>
+            )}
           </>
         )}
         {stage === "submitted" && onApprove && (
@@ -226,7 +245,7 @@ function AdRow({
           <button
             className="adm-icon-btn adm-icon-btn--activate"
             onClick={onActivate}
-            title="Push live now"
+            title="Push live"
           >
             ▶
           </button>
@@ -585,6 +604,18 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  async function deactivateActive(id: string) {
+    setActive((a) => a.filter((x) => x.id !== id));
+    try {
+      await adminApi.deactivateActive(id);
+      showToast("Moved back to Unused.");
+    } catch (e) {
+      if (e instanceof NotFoundError)
+        showToast("Already removed by another admin.");
+      await fetchAll();
+    }
+  }
+
   async function clearAll() {
     if (!confirm("Remove all live ads?")) return;
     setActive([]);
@@ -744,25 +775,44 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
-      {/* ── Section 1: Submitted (needs review) ─────────────────────────── */}
+      {/* ── Section 1: Unused ads (approved first, then pending) ───────── */}
       <section className="adm-section">
         <div className="adm-section-header">
-          <span className="adm-section-title">Submitted</span>
-          <span className="adm-section-sub">Awaiting admin approval</span>
-          <span className="adm-count">{submitted.length}</span>
+          <span className="adm-section-title">Unused Ads</span>
+          <span className="adm-section-sub">
+            Approved ads are ready to push live · Pending ads await approval
+          </span>
+          <span className="adm-count">{approved.length + submitted.length}</span>
+          {approved.length > 0 && (
+            <button className="adm-btn adm-btn--sm" onClick={reloadAll}>
+              Push all approved live
+            </button>
+          )}
           {submitted.length > 0 && (
             <button
               className="adm-btn adm-btn--ghost adm-btn--sm"
               onClick={approveAllSubmitted}
             >
-              Approve all
+              Approve all pending
             </button>
           )}
         </div>
-        {submitted.length === 0 ? (
-          <p className="adm-empty">No pending submissions.</p>
+        {approved.length === 0 && submitted.length === 0 ? (
+          <p className="adm-empty">No unused ads.</p>
         ) : (
           <div className="adm-list">
+            {/* Approved ads shown first */}
+            {approved.map((ad) => (
+              <AdRow
+                key={ad.id}
+                ad={ad}
+                stage="approved"
+                onPreview={() => setPreview(ad)}
+                onActivate={() => activateApproved(ad.id)}
+                onDelete={() => deleteApproved(ad.id)}
+              />
+            ))}
+            {/* Pending/submitted ads shown below approved */}
             {submitted.map((ad) => (
               <AdRow
                 key={ad.id}
@@ -779,47 +829,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
       <div className="adm-rule" />
 
-      {/* ── Section 2: Approved (ready to go live) ──────────────────────── */}
+      {/* ── Section 2: Live playlist ──────────────────────────────────────── */}
       <section className="adm-section">
         <div className="adm-section-header">
-          <span className="adm-section-title">Approved</span>
-          <span className="adm-section-sub">
-            Ready — push live via Reload or Z key
-          </span>
-          <span className="adm-count">{approved.length}</span>
-          {approved.length > 0 && (
-            <button className="adm-btn adm-btn--sm" onClick={reloadAll}>
-              Push all live
-            </button>
-          )}
-        </div>
-        {approved.length === 0 ? (
-          <p className="adm-empty">
-            No approved ads. Approve items from Submitted above.
-          </p>
-        ) : (
-          <div className="adm-list">
-            {approved.map((ad) => (
-              <AdRow
-                key={ad.id}
-                ad={ad}
-                stage="approved"
-                onPreview={() => setPreview(ad)}
-                onActivate={() => activateApproved(ad.id)}
-                onDelete={() => deleteApproved(ad.id)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <div className="adm-rule" />
-
-      {/* ── Section 3: Live playlist ─────────────────────────────────────── */}
-      <section className="adm-section">
-        <div className="adm-section-header">
-          <span className="adm-section-title">Live Playlist</span>
-          <span className="adm-section-sub">Currently shown on kiosk</span>
+          <span className="adm-section-title">Live Ads</span>
+          <span className="adm-section-sub">Currently shown on kiosk · reorder with ↑↓ · ← moves back to Unused</span>
           <span className="adm-count">{active.length}</span>
           {active.length > 0 && (
             <button
@@ -832,7 +846,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
         {active.length === 0 ? (
           <p className="adm-empty">
-            Nothing live. Approve and push ads from the sections above.
+            Nothing live. Approve ads above then push them live.
           </p>
         ) : (
           <div className="adm-list">
@@ -846,6 +860,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 onPreview={() => setPreview(ad)}
                 onMoveUp={() => move(i, -1)}
                 onMoveDown={() => move(i, 1)}
+                onDeactivate={() => deactivateActive(ad.id)}
                 onDelete={() => deleteActive(ad.id)}
               />
             ))}
