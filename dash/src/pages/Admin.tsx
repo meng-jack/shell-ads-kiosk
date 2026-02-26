@@ -658,10 +658,16 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   async function deactivateActive(id: string) {
+    // Optimistically move the ad from active → approved so it appears
+    // instantly in the Unused section without flickering.
+    const ad = active.find((x) => x.id === id);
     setActive((a) => a.filter((x) => x.id !== id));
+    if (ad) setApproved((a) => [ad, ...a]);
     try {
       await adminApi.deactivateActive(id);
       showToast("Moved back to Unused.");
+      // Sync to confirm server state (reorder, etc.)
+      await fetchAll();
     } catch (e) {
       if (e instanceof NotFoundError)
         showToast("Already removed by another admin.");

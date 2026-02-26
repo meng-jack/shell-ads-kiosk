@@ -67,39 +67,84 @@ function fmtBytes(b: number): string {
   return Math.round(b / 1e3) + " KB";
 }
 
-// Upload directly to file.io from the browser — bypasses the Cloudflare tunnel
-// entirely. file.io returns a one-time-use link which the launcher downloads to
-// local storage immediately upon submission, before the link expires.
+// Upload directly to file.io from the browser — the request is crafted and
+// fired entirely from client-side JS so it never touches the Go server or any
+// Cloudflare tunnel (avoiding size / rate limits imposed on the host server).
+//
+// Uses XHR (not fetch) so we get real-time upload progress events.
+// The FormData is built here, not by the caller, to guarantee nothing mutates it
+// between construction and transmission.
 function uploadToFileIo(
-  fd: FormData,
+  file: File,
   onProgress: (pct: number) => void,
   signal: AbortSignal,
 ): Promise<string> {
+  // Build the multipart body right here — only the fields the API requires.
+  // POST / on https://file.io (no trailing slash — avoids redirect stripping body).
+  // autoDelete is omitted; the free tier always deletes on first download.
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("expires", "1d");
+  fd.append("maxDownloads", "1");
+
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "https://file.io/");
+    // No trailing slash — matches the API server base in the spec.
+    xhr.open("POST", "https://file.io");
+    // No explicit Content-Type header — the browser sets multipart/form-data
+    // with the correct boundary when FormData is passed to send().
+    xhr.withCredentials = false;
+
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable)
         onProgress(Math.round((e.loaded / e.total) * 100));
     });
+
     xhr.addEventListener("load", () => {
+      // HTTP error before we even parse JSON
+      if (xhr.status !== 200) {
+        reject(
+          new Error(
+            `file.io returned HTTP ${xhr.status}${
+              xhr.statusText ? " " + xhr.statusText : ""
+            }.`,
+          ),
+        );
+        return;
+      }
       try {
         const data = JSON.parse(xhr.responseText) as {
           success: boolean;
           link?: string;
           message?: string;
+          status?: number;
         };
-        if (data.success && data.link) resolve(data.link);
-        else
+        if (data.success && data.link) {
+          resolve(data.link);
+        } else {
           reject(
-            new Error(data.message ?? "Upload failed — no link returned."),
+            new Error(
+              data.message ??
+                `Upload rejected by file.io (status ${data.status ?? "unknown"}).`,
+            ),
           );
+        }
       } catch {
-        reject(new Error("Unexpected response from file.io."));
+        reject(
+          new Error(
+            `Unexpected response from file.io (HTTP ${xhr.status}): ${xhr.responseText.slice(0, 120)}`,
+          ),
+        );
       }
     });
+
     xhr.addEventListener("error", () =>
-      reject(new Error("Network error — check your connection and try again.")),
+      reject(
+        new Error(
+          "Could not reach file.io — check your internet connection. " +
+            "(If you are behind a strict firewall, file.io may be blocked.)",
+        ),
+      ),
     );
     xhr.addEventListener("abort", () => reject(new Error("Upload cancelled.")));
     signal.addEventListener("abort", () => xhr.abort());
@@ -205,13 +250,9 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
     setUploading(true);
     setError(null);
     setUploadPct(0);
-    const fd = new FormData();
-    fd.append("file", uploadFile);
-    fd.append("expires", "1d");
-    fd.append("autoDelete", "true");
     try {
       const link = await uploadToFileIo(
-        fd,
+        uploadFile,
         setUploadPct,
         abortRef.current.signal,
       );
