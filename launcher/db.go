@@ -323,12 +323,14 @@ func dbMoveApprovedToLive() int {
 }
 
 // dbBySubmitter returns all ads submitted by the given email, newest first.
+// SubmittedBy is stored as "Name <email>" so we match on the email portion.
 func dbBySubmitter(email string) []adRecord {
 	storeMu.RLock()
 	defer storeMu.RUnlock()
 	var out []adRecord
 	for _, r := range store.Ads {
-		if r.SubmittedBy == email {
+		// Support both bare "email" and "Name <email>" formats.
+		if r.SubmittedBy == email || strings.Contains(r.SubmittedBy, "<"+email+">") {
 			out = append(out, r)
 		}
 	}

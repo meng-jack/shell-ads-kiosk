@@ -23,7 +23,12 @@ function itemToAd(item: SubmissionItem): PendingAd {
 // ── JWT decode (no external lib needed — Google credential is a plain JWT) ───
 function decodeGoogleJwt(credential: string): GoogleUser | null {
   try {
-    const payload = JSON.parse(atob(credential.split(".")[1])) as {
+    // JWT uses base64url (- and _ instead of + and /); atob needs standard base64.
+    // We also decode via TextDecoder so multi-byte UTF-8 characters (smart quotes,
+    // accented letters, etc.) in the user's name are preserved correctly.
+    const b64 = credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const payload = JSON.parse(new TextDecoder().decode(bytes)) as {
       name?: string;
       email?: string;
       picture?: string;
@@ -152,7 +157,7 @@ export default function Submit() {
   }
 
   return (
-    <div className="page">
+    <div className="page page--scrollable">
       <ProfileBar
         user={user}
         view={view}
@@ -175,11 +180,22 @@ export default function Submit() {
       ) : (
         <>
           <p className="page-title">My Submissions</p>
-          <div className="container">
+          <div className="container container--wide">
             <AdQueue ads={submissions} fullView />
           </div>
         </>
       )}
+
+      <p className="page-footer">
+        <a
+          className="page-footer-link"
+          href="https://github.com/exoad/ShellNews-Bernard"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Source on GitHub
+        </a>
+      </p>
     </div>
   );
 }
