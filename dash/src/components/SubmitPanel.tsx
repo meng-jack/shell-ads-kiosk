@@ -41,13 +41,13 @@ const TYPE_CONFIG: Record<
   },
   html: {
     label: "HTML",
-    placeholder: "https://example.com/ad.html",
+    placeholder: "https://example.com/ad",
     accept: ".html,.htm",
     exts: ["html", "htm"],
     mimes: ["text/html"],
     description:
       "Rendered as a full-screen iframe on the kiosk. Accepted formats: HTML, HTM.",
-    urlHint: "Must be a direct public link to a .html or .htm file.",
+    urlHint: "Must be a valid https:// URL that serves an HTML page.",
     warning:
       "Bundle all CSS, JavaScript, and images into a single self-contained file — no relative local file references. External CDN links are fine.\n\nUploading malicious, deceptive, or harmful content will result in immediate permanent removal and may carry severe legal consequences.",
   },
@@ -56,6 +56,8 @@ const TYPE_CONFIG: Record<
 type InputMode = "upload" | "url";
 
 interface Props {
+  submitterName: string;
+  submitterEmail: string;
   onSubmit: (ad: PendingAd, submittedBy: string) => void;
 }
 
@@ -75,7 +77,7 @@ function uploadToFileIo(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "https://file.io/?expires=1d");
+    xhr.open("POST", "https://file.io/");
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable)
         onProgress(Math.round((e.loaded / e.total) * 100));
@@ -125,10 +127,13 @@ function validateFileType(
 }
 
 // Validate a URL's extension for the given type.
+// HTML ads can be served from any URL, so skip the extension check for them.
 function validateUrlExt(
   url: string,
+  adType: AdType,
   cfg: (typeof TYPE_CONFIG)[AdType],
 ): string | null {
+  if (adType === "html") return null; // any valid URL is fine for HTML
   try {
     const path = new URL(url).pathname.split("?")[0].toLowerCase();
     const ext = path.split(".").pop() ?? "";
@@ -140,10 +145,9 @@ function validateUrlExt(
   return null;
 }
 
-export default function SubmitPanel({ onSubmit }: Props) {
+export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }: Props) {
   const [mode, setMode] = useState<InputMode>("upload");
   const [name, setName] = useState("");
-  const [submitterName, setSubmitterName] = useState("");
   const [type, setType] = useState<AdType>("image");
   const [url, setUrl] = useState("");
   const [duration, setDuration] = useState(15);
@@ -203,6 +207,8 @@ export default function SubmitPanel({ onSubmit }: Props) {
     setUploadPct(0);
     const fd = new FormData();
     fd.append("file", uploadFile);
+    fd.append("expires", "1d");
+    fd.append("autoDelete", "true");
     try {
       const link = await uploadToFileIo(
         fd,
@@ -224,7 +230,6 @@ export default function SubmitPanel({ onSubmit }: Props) {
 
   function validate(): string | null {
     if (!name.trim()) return "Name is required.";
-    if (!submitterName.trim()) return "Your name is required.";
     const finalUrl = mode === "upload" ? (uploadedUrl ?? "") : url.trim();
     if (!finalUrl)
       return mode === "upload"
@@ -236,7 +241,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
       return "Enter a valid URL (must start with https://).";
     }
     if (mode === "url") {
-      const extErr = validateUrlExt(finalUrl, cfg);
+      const extErr = validateUrlExt(finalUrl, type, cfg);
       if (extErr) return extErr;
     }
     if (duration < 1 || duration > 120)
@@ -253,7 +258,8 @@ export default function SubmitPanel({ onSubmit }: Props) {
     }
     setError(null);
     const finalUrl = mode === "upload" ? uploadedUrl! : url.trim();
-    const trimmedSubmitter = submitterName.trim();
+    // Store name + email together for full traceability
+    const submittedBy = `${submitterName} <${submitterEmail}>`;
     onSubmit(
       {
         id: crypto.randomUUID(),
@@ -263,9 +269,9 @@ export default function SubmitPanel({ onSubmit }: Props) {
         durationSec: duration,
         status: "pending",
         submittedAt: new Date(),
-        submittedBy: trimmedSubmitter,
+        submittedBy,
       },
-      trimmedSubmitter,
+      submittedBy,
     );
     setOk(true);
     setTimeout(() => setOk(false), 2500);
@@ -321,21 +327,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
           onChange={(e) => setName(e.target.value)}
         />
       </div>
-      {/* ── Submitter name ────────────────────────────────────────────── */}
-      <div className="sp-field">
-        <label className="sp-label" htmlFor="sp-submitter">
-          Your name
-        </label>
-        <input
-          id="sp-submitter"
-          className="sp-input"
-          type="text"
-          placeholder="Jane Smith"
-          value={submitterName}
-          maxLength={80}
-          onChange={(e) => setSubmitterName(e.target.value)}
-        />
-      </div>
+      {/* Submitter identity is taken from Google sign-in — no manual field needed */}
       {/* ── Input mode switch ─────────────────────────────────────── */}
       <div className="sp-mode-row">
         <button

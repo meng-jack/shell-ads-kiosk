@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { GoogleLogin } from "@react-oauth/google";
 import SubmitPanel from "../components/SubmitPanel";
 import AdQueue from "../components/AdQueue";
 import type { PendingAd, SubmissionRecord } from "../types";
 import { submissionStatus } from "../api";
+import { useAuth, type GoogleUser } from "../AuthContext";
 import "../App.css";
 
 const HISTORY_KEY = "shellnews_history";
@@ -33,7 +35,85 @@ function recordToPendingAd(r: SubmissionRecord): PendingAd {
   };
 }
 
+// ── JWT decode (no external lib needed — Google credential is a plain JWT) ───
+function decodeGoogleJwt(credential: string): GoogleUser | null {
+  try {
+    const payload = JSON.parse(atob(credential.split(".")[1])) as {
+      name?: string;
+      email?: string;
+      picture?: string;
+    };
+    if (!payload.name || !payload.email) return null;
+    return {
+      name: payload.name,
+      email: payload.email,
+      picture: payload.picture ?? "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ── Login gate ────────────────────────────────────────────────────────────────
+function LoginGate() {
+  const { signIn } = useAuth();
+  const [err, setErr] = useState<string | null>(null);
+
+  return (
+    <div className="sub-login-wrap">
+      <div className="sub-login-card">
+        <p className="wordmark">Startup Shell</p>
+        <p className="sub-login-title">Submit an Ad</p>
+        <p className="sub-login-hint">Sign in with your Google account to continue.</p>
+        <GoogleLogin
+          onSuccess={(cred) => {
+            const user = decodeGoogleJwt(cred.credential ?? "");
+            if (user) {
+              signIn(user);
+            } else {
+              setErr("Could not read profile from Google. Please try again.");
+            }
+          }}
+          onError={() => setErr("Google sign-in failed. Please try again.")}
+          theme="filled_black"
+          shape="rectangular"
+          size="large"
+          text="signin_with"
+          useOneTap
+        />
+        {err && <p className="sub-login-err">{err}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ── Profile bar ───────────────────────────────────────────────────────────────
+function ProfileBar({ user }: { user: GoogleUser }) {
+  const { signOut } = useAuth();
+  return (
+    <div className="sub-profile-bar">
+      {user.picture && (
+        <img
+          className="sub-profile-avatar"
+          src={user.picture}
+          alt={user.name}
+          referrerPolicy="no-referrer"
+        />
+      )}
+      <div className="sub-profile-info">
+        <span className="sub-profile-name">{user.name}</span>
+        <span className="sub-profile-email">{user.email}</span>
+      </div>
+      <button className="sub-profile-signout" type="button" onClick={signOut}>
+        Sign out
+      </button>
+    </div>
+  );
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
 export default function Submit() {
+  const { user } = useAuth();
   const [history, setHistory] = useState<SubmissionRecord[]>(loadHistory);
   const pollRef = useRef<number>();
 
@@ -61,6 +141,8 @@ export default function Submit() {
     pollRef.current = window.setInterval(poll, 5000);
     return () => clearInterval(pollRef.current);
   }, []);
+
+  if (!user) return <LoginGate />;
 
   async function handleSubmit(ad: PendingAd, submittedBy: string) {
     const record: SubmissionRecord = {
@@ -94,13 +176,17 @@ export default function Submit() {
 
   return (
     <div className="page">
+      <ProfileBar user={user} />
       <p className="wordmark">Startup Shell</p>
       <p className="page-title">Submit an Ad</p>
       <div className="container">
-        <SubmitPanel onSubmit={handleSubmit} />
+        <SubmitPanel
+          submitterName={user.name}
+          submitterEmail={user.email}
+          onSubmit={handleSubmit}
+        />
         <AdQueue ads={pendingAds} />
       </div>
     </div>
   );
 }
-
