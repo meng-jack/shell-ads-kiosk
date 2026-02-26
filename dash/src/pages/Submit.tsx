@@ -173,7 +173,7 @@ export default function Submit() {
 
   async function handleRetract(id: string) {
     try {
-      await retractMySubmission(id);
+      await retractMySubmission(id, user!.email);
     } catch {
       // Best-effort — ignore network errors
     }
