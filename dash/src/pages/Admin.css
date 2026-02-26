@@ -15,7 +15,6 @@
     gap: 20px;
     background: var(--surface);
     border: 1px solid var(--line-hi);
-    border-radius: 18px;
     padding: 40px 36px;
     box-shadow: var(--shadow), var(--shadow-inset);
 }
@@ -82,7 +81,6 @@
     gap: 0;
     background: var(--surface);
     border: 1px solid var(--line-hi);
-    border-radius: 12px;
     overflow: hidden;
     flex-wrap: wrap;
     box-shadow: var(--shadow-sm), var(--shadow-inset);
@@ -155,7 +153,6 @@
     gap: 14px;
     background: var(--surface);
     border: 1px solid var(--line-hi);
-    border-radius: 12px;
     padding: 14px 18px;
     flex-wrap: wrap;
     box-shadow: var(--shadow-sm), var(--shadow-inset);
@@ -191,7 +188,6 @@
 .adm-btn {
     background: var(--cream);
     border: none;
-    border-radius: 5px;
     color: var(--red);
     font-family: var(--font);
     font-size: 13px;
@@ -212,7 +208,6 @@
     width: 100%;
     padding: 13px;
     font-size: 14px;
-    border-radius: 10px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 .adm-btn--primary:hover:not(:disabled) {
@@ -254,7 +249,6 @@
 .adm-input {
     background: var(--surface-lo);
     border: 1px solid var(--line);
-    border-radius: 8px;
     color: var(--cream);
     font-family: var(--font);
     font-size: 15px;
@@ -285,7 +279,6 @@
 .adm-err-banner {
     background: rgba(239, 68, 68, 0.12);
     border: 1px solid rgba(239, 68, 68, 0.25);
-    border-radius: 6px;
     padding: 10px 14px;
     font-size: 13px;
     font-weight: 600;
@@ -339,7 +332,6 @@
     font-weight: 800;
     background: rgba(251, 245, 243, 0.08);
     border: 1px solid var(--line);
-    border-radius: 99px;
     padding: 1px 8px;
     opacity: 0.6;
     font-variant-numeric: tabular-nums;
@@ -362,7 +354,6 @@
     display: flex;
     flex-direction: column;
     border: 1px solid var(--line-hi);
-    border-radius: 12px;
     overflow: hidden;
     background: var(--surface-lo);
     box-shadow: var(--shadow-sm), var(--shadow-inset);
@@ -430,7 +421,6 @@
     letter-spacing: 0.5px;
     text-transform: uppercase;
     padding: 2px 6px;
-    border-radius: 4px;
     flex-shrink: 0;
 }
 .adm-type--image {
@@ -472,7 +462,6 @@
 .adm-icon-btn {
     background: transparent;
     border: 1px solid var(--line);
-    border-radius: 4px;
     color: var(--cream);
     font-family: var(--font);
     font-size: 12px;
@@ -531,7 +520,6 @@
     letter-spacing: 0.8px;
     text-transform: uppercase;
     padding: 1px 6px;
-    border-radius: 4px;
     flex-shrink: 0;
 }
 .adm-badge--approved {
@@ -556,7 +544,6 @@
     font-size: 13px;
     font-weight: 800;
     padding: 10px 20px;
-    border-radius: 6px;
     pointer-events: none;
     white-space: nowrap;
     z-index: 200;

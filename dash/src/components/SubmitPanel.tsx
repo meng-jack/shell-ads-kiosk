@@ -265,10 +265,13 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
       return mode === "upload"
         ? "Upload a file first, or switch to Paste URL."
         : "URL is required.";
-    try {
-      new URL(finalUrl);
-    } catch {
-      return "Enter a valid URL (must start with https://).";
+    // Uploaded files produce a server-relative /media/ path — skip absolute URL check.
+    if (mode !== "upload" || !finalUrl.startsWith("/media/")) {
+      try {
+        new URL(finalUrl);
+      } catch {
+        return "Enter a valid URL (must start with https://).";
+      }
     }
     if (mode === "url") {
       const extErr = validateUrlExt(finalUrl, type, cfg);

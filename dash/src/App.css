@@ -52,7 +52,6 @@
     gap: 20px;
     background: var(--surface);
     border: 1px solid var(--line-hi);
-    border-radius: 18px;
     padding: 40px 36px;
 }
 
@@ -84,7 +83,6 @@
     max-width: 460px;
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 12px;
     padding: 10px 16px;
     margin-bottom: 24px;
 }
@@ -126,7 +124,6 @@
     font-weight: 700;
     background: none;
     border: 1px solid var(--line);
-    border-radius: 6px;
     padding: 4px 10px;
     color: inherit;
     cursor: pointer;
@@ -144,7 +141,6 @@
     font-weight: 700;
     background: none;
     border: 1px solid var(--line);
-    border-radius: 6px;
     padding: 4px 10px;
     color: inherit;
     cursor: pointer;
