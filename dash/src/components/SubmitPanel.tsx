@@ -25,7 +25,7 @@ const TYPE_CONFIG: Record<
     exts: ["png", "jpg", "jpeg", "webp", "gif"],
     mimes: ["image/png", "image/jpeg", "image/webp", "image/gif"],
     description:
-      "Displayed as a full-screen static image on the kiosk. Accepted formats: PNG, JPG / JPEG, WEBP, GIF.",
+      "Displayed as a full-screen static image on Bernard. Accepted formats: PNG, JPG / JPEG, WEBP, GIF.",
     urlHint:
       "Must be a direct public link ending in .png, .jpg, .jpeg, .webp, or .gif.",
   },
@@ -36,7 +36,7 @@ const TYPE_CONFIG: Record<
     exts: ["mp4", "webm"],
     mimes: ["video/mp4", "video/webm"],
     description:
-      "Played as a full-screen looping video on the kiosk. Accepted formats: MP4, WEBM.",
+      "Played as a full-screen looping video on Bernard. Accepted formats: MP4, WEBM.",
     urlHint: "Must be a direct public link ending in .mp4 or .webm.",
   },
   html: {
@@ -46,7 +46,7 @@ const TYPE_CONFIG: Record<
     exts: ["html", "htm"],
     mimes: ["text/html"],
     description:
-      "Rendered as a full-screen iframe on the kiosk. Accepted formats: HTML, HTM.",
+      "Rendered as a full-screen iframe on Bernard. Accepted formats: HTML, HTM.",
     urlHint: "Must be a valid https:// URL that serves an HTML page.",
     warning:
       "Bundle all CSS, JavaScript, and images into a single self-contained file — no relative local file references. External CDN links are fine.\n\nUploading malicious, deceptive, or harmful content will result in immediate permanent removal and may carry severe legal consequences.",

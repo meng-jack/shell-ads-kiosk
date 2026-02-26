@@ -314,7 +314,7 @@ function StatsBar({
   return (
     <div className="adm-stats-bar">
       <div className="adm-stat">
-        <span className="adm-stat-label">Kiosk</span>
+        <span className="adm-stat-label">Bernard</span>
         <span
           className={`adm-stat-val adm-stat-val--${k.running ? "green" : "red"}`}
         >
@@ -368,7 +368,7 @@ function StatsBar({
           className="adm-btn adm-btn--ghost adm-btn--sm adm-btn--danger"
           onClick={onRestart}
         >
-          Restart kiosk
+          Restart Bernard
         </button>
       </div>
     </div>
@@ -631,7 +631,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   async function clearAll() {
-    if (!confirm("Remove all live ads?")) return;
+    if (!confirm("Remove all live news?")) return;
     setActive([]);
     try {
       const r = await adminApi.clearActive();
@@ -732,10 +732,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
   // ── Kiosk ──────────────────────────────────────────────────────────────────
   async function restartKiosk() {
-    if (!confirm("Restart the kiosk process?")) return;
+    if (!confirm("Restart Bernard?")) return;
     try {
       await adminApi.restartKiosk();
-      showToast("Kiosk restarting…");
+      showToast("Bernard restarting…");
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : "Error");
     }
@@ -745,7 +745,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     try {
       await adminApi.kioskNext();
     } catch {
-      showToast("Could not reach kiosk.");
+      showToast("Could not reach Bernard.");
     }
   }
 
@@ -753,7 +753,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     try {
       await adminApi.kioskPrev();
     } catch {
-      showToast("Could not reach kiosk.");
+      showToast("Could not reach Bernard.");
     }
   }
 
@@ -807,9 +807,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       {/* ── Section 1: Unused ads (approved first, then pending) ───────── */}
       <section className="adm-section">
         <div className="adm-section-header">
-          <span className="adm-section-title">Unused Ads</span>
+          <span className="adm-section-title">Unused News</span>
           <span className="adm-section-sub">
-            Approved ads are ready to push live · Pending ads await approval
+            Approved news is ready to push live · Pending news awaits approval
           </span>
           <span className="adm-count">{approved.length + submitted.length}</span>
           {approved.length > 0 && (
@@ -827,7 +827,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           )}
         </div>
         {approved.length === 0 && submitted.length === 0 ? (
-          <p className="adm-empty">No unused ads.</p>
+          <p className="adm-empty">No unused news.</p>
         ) : (
           <div className="adm-list">
             {/* Approved ads shown first */}
@@ -861,8 +861,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       {/* ── Section 2: Live playlist ──────────────────────────────────────── */}
       <section className="adm-section">
         <div className="adm-section-header">
-          <span className="adm-section-title">Live Ads</span>
-          <span className="adm-section-sub">Currently shown on kiosk · reorder with ↑↓ · ← moves back to Unused</span>
+          <span className="adm-section-title">Live News</span>
+          <span className="adm-section-sub">Currently shown on Bernard · reorder with ↑↓ · ← moves back to Unused</span>
           <span className="adm-count">{active.length}</span>
           {active.length > 0 && (
             <button
@@ -875,7 +875,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
         {active.length === 0 ? (
           <p className="adm-empty">
-            Nothing live. Approve ads above then push them live.
+            Nothing live. Approve news above then push it live.
           </p>
         ) : (
           <div className="adm-list">

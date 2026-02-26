@@ -53,7 +53,7 @@ function LoginGate() {
     <div className="sub-login-wrap">
       <div className="sub-login-card">
         <p className="wordmark">Startup Shell</p>
-        <p className="sub-login-title">Submit an Ad</p>
+        <p className="sub-login-title">Submit News</p>
         <p className="sub-login-hint">Sign in with your Google account to continue.</p>
         <GoogleLogin
           onSuccess={(cred) => {
@@ -107,7 +107,7 @@ function ProfileBar({
         type="button"
         onClick={onToggleView}
       >
-        {view === "history" ? "Submit an Ad" : "My Submissions"}
+        {view === "history" ? "Submit News" : "My Submissions"}
       </button>
       <button className="sub-profile-signout" type="button" onClick={signOut}>
         Sign out
@@ -167,7 +167,7 @@ export default function Submit() {
 
       {view === "submit" ? (
         <>
-          <p className="page-title">Submit an Ad</p>
+          <p className="page-title">Submit News</p>
           <div className="container">
             <SubmitPanel
               submitterName={user.name}
@@ -194,6 +194,25 @@ export default function Submit() {
           rel="noopener noreferrer"
         >
           Source on GitHub
+        </a>
+        <span className="page-footer-sep">·</span>
+        <a
+          className="page-footer-link"
+          href="https://github.com/exoad/ShellNews-Bernard/blob/main/LICENSE"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Unlicense
+        </a>
+        <span className="page-footer-sep">·</span>
+        <a
+          className="page-footer-link page-footer-link--glwts"
+          href="https://github.com/exoad/ShellNews-Bernard/blob/main/LICENSE-NSFW"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="GLWTS Public License — do whatever the f**k you want, at your OWN RISK. Good luck and Godspeed."
+        >
+          &amp; GLWTS — do whatever the f**k you want
         </a>
       </p>
     </div>

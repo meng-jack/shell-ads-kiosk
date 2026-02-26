@@ -22,16 +22,16 @@ const CARDS: CardData[] = [
     ],
   },
   {
-    title: 'Kiosk',
+    title: 'Bernard',
     badge: { text: 'Running', variant: 'green' },
     rows: [
       { label: 'Mode',       value: 'Fullscreen' },
-      { label: 'Ad Source',  value: 'Remote API' },
+      { label: 'News Source',  value: 'Remote API' },
       { label: 'Cache',      value: 'Local disk' },
     ],
   },
   {
-    title: 'Ad Playlist',
+    title: 'News Playlist',
     badge: { text: 'Looping', variant: 'yellow' },
     rows: [
       { label: 'Now Playing', value: '—' },

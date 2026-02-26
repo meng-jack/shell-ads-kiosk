@@ -11,7 +11,7 @@ interface Props {
 const STATUS_LABEL: Record<AdStatus, string> = {
   submitted: "Pending review",
   approved: "Approved",
-  live: "Live on kiosk",
+  live: "Live on Bernard",
   denied: "Denied",
   unknown: "Unknown",
 };
@@ -19,7 +19,7 @@ const STATUS_LABEL: Record<AdStatus, string> = {
 const STATUS_DESC: Record<AdStatus, string> = {
   submitted: "Waiting for an admin to review your submission.",
   approved: "Approved and ready to go live when the playlist is next updated.",
-  live: "Currently playing on the kiosk.",
+  live: "Currently playing on Bernard.",
   denied: "This submission was not approved.",
   unknown: "Status could not be determined.",
 };
@@ -91,7 +91,7 @@ export default function AdQueue({ ads, fullView = false }: Props) {
     if (fullView) {
       return (
         <div className="aq aq--full">
-          <p className="aq-empty">You haven't submitted any ads yet.</p>
+          <p className="aq-empty">You haven't submitted any news yet.</p>
         </div>
       );
     }

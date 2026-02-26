@@ -16,6 +16,18 @@ export default function Footer() {
       <span>{time}</span>
       <span className="sep">·</span>
       <a href="https://github.com/exoad/ShellNews-Bernard" target="_blank" rel="noopener noreferrer">Source</a>
+      <span className="sep">·</span>
+      <a href="https://github.com/exoad/ShellNews-Bernard/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Unlicense</a>
+      <span className="sep">·</span>
+      <a
+        href="https://github.com/exoad/ShellNews-Bernard/blob/main/LICENSE-NSFW"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="GLWTS Public License — do whatever the f**k you want, at your OWN RISK. Good luck and Godspeed."
+        style={{ fontStyle: 'italic' }}
+      >
+        GLWTS — do whatever the f**k you want
+      </a>
     </footer>
   )
 }
