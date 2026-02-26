@@ -1,11 +1,14 @@
 import { useState } from "react";
 import type { PendingAd, AdStatus } from "../types";
+import PreviewModal from "./PreviewModal";
 import "./AdQueue.css";
 
 interface Props {
   ads: PendingAd[];
   /** When true, renders as a standalone full submissions list (no heading, wider cards) */
   fullView?: boolean;
+  /** Called when the user retracts (deletes) a submission. */
+  onRetract?: (id: string) => void;
 }
 
 const STATUS_LABEL: Record<AdStatus, string> = {
@@ -38,54 +41,15 @@ function fmtDate(d: Date): string {
 }
 
 // ── Preview modal ──────────────────────────────────────────────────────────────
-function PreviewModal({ ad, onClose }: { ad: PendingAd; onClose: () => void }) {
-  function handleBackdrop(e: React.MouseEvent) {
-    if (e.target === e.currentTarget) onClose();
-  }
+// (shared PreviewModal component handles rendering at 16:9 aspect ratio)
 
-  return (
-    <div className="aq-modal-backdrop" onClick={handleBackdrop}>
-      <div className="aq-modal">
-        <div className="aq-modal-header">
-          <div className="aq-modal-title">
-            <span className="aq-modal-name">{ad.name}</span>
-            <span className={`aq-type aq-type--${ad.type}`}>{ad.type}</span>
-          </div>
-          <button className="aq-modal-close" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
-        </div>
-        <div className="aq-modal-body">
-          {ad.type === "image" && (
-            <img className="aq-preview-img" src={ad.url} alt={ad.name} />
-          )}
-          {ad.type === "video" && (
-            <video
-              className="aq-preview-video"
-              src={ad.url}
-              controls
-              autoPlay
-              loop
-              playsInline
-            />
-          )}
-          {ad.type === "html" && (
-            <iframe
-              className="aq-preview-iframe"
-              src={ad.url}
-              title={ad.name}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
-              referrerPolicy="no-referrer"
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function AdQueue({ ads, fullView = false }: Props) {
+export default function AdQueue({ ads, fullView = false, onRetract }: Props) {
   const [previewAd, setPreviewAd] = useState<PendingAd | null>(null);
+
+  function handleRetract(ad: PendingAd) {
+    if (!window.confirm(`Remove "${ad.name}"?\n\nThis will permanently delete the submission and any uploaded media file, even if it is currently live.`)) return;
+    onRetract?.(ad.id);
+  }
 
   if (ads.length === 0) {
     if (fullView) {
@@ -102,7 +66,10 @@ export default function AdQueue({ ads, fullView = false }: Props) {
     return (
       <>
         {previewAd && (
-          <PreviewModal ad={previewAd} onClose={() => setPreviewAd(null)} />
+          <PreviewModal
+            item={{ name: previewAd.name, type: previewAd.type, src: previewAd.url }}
+            onClose={() => setPreviewAd(null)}
+          />
         )}
         <div className="aq aq--full">
           {ads.map((ad) => (
@@ -121,6 +88,16 @@ export default function AdQueue({ ads, fullView = false }: Props) {
                   >
                     Preview
                   </button>
+                  {onRetract && (
+                    <button
+                      className="aq-retract-btn"
+                      type="button"
+                      onClick={() => handleRetract(ad)}
+                      title="Retract submission"
+                    >
+                      Retract
+                    </button>
+                  )}
                   <span className={`aq-status aq-status--${ad.status}`}>
                     {STATUS_LABEL[ad.status]}
                   </span>
@@ -159,9 +136,31 @@ export default function AdQueue({ ads, fullView = false }: Props) {
               <span className="aq-date">{fmtDate(ad.submittedAt)}</span>
             </span>
           </div>
-          <span className={`aq-status aq-status--${ad.status}`}>
-            {STATUS_LABEL[ad.status]}
-          </span>
+          <div className="aq-row-right">
+            <span className={`aq-status aq-status--${ad.status}`}>
+              {STATUS_LABEL[ad.status]}
+            </span>
+            <div className="aq-row-actions">
+              <button
+                className="aq-preview-btn"
+                type="button"
+                onClick={() => setPreviewAd(ad)}
+                title="Preview"
+              >
+                Preview
+              </button>
+              {onRetract && (
+                <button
+                  className="aq-retract-btn"
+                  type="button"
+                  onClick={() => handleRetract(ad)}
+                  title="Retract"
+                >
+                  Retract
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       ))}
     </div>

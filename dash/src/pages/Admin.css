@@ -513,6 +513,28 @@
     opacity: 1;
 }
 
+/* ── Duration control ─────────────────────────────────────────────── */
+.adm-dur-ctrl {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+.adm-icon-btn--dur {
+    width: 22px;
+    height: 22px;
+    font-size: 14px;
+}
+.adm-dur-val {
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 0.6;
+    min-width: 24px;
+    text-align: center;
+    color: var(--cream);
+    user-select: none;
+}
+
 /* ── Preview modal ────────────────────────────────────────────────── */
 .adm-modal-backdrop {
     position: fixed;

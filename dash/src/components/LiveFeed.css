@@ -1,0 +1,126 @@
+.lf {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.lf-empty {
+    font-size: 13px;
+    color: var(--dim);
+    opacity: 0.5;
+    text-align: center;
+    padding: 48px 0;
+    margin: 0;
+}
+
+.lf-count {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--dim);
+    opacity: 0.5;
+    margin: 0 0 14px;
+}
+
+.lf-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-top: 1px solid var(--line);
+}
+
+/* ── Row ───────────────────────────────────────────────────────────────────── */
+.lf-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.lf-num {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--dim);
+    opacity: 0.35;
+    width: 22px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.lf-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.lf-name {
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lf-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* ── Type badge ────────────────────────────────────────────────────────────── */
+.lf-type {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    flex-shrink: 0;
+}
+
+.lf-type--image { background: rgba(96, 165, 250, 0.12); color: #93c5fd; border: 1px solid rgba(96, 165, 250, 0.2); }
+.lf-type--video { background: rgba(167, 139, 250, 0.12); color: #c4b5fd; border: 1px solid rgba(167, 139, 250, 0.2); }
+.lf-type--html  { background: rgba(52, 211, 153, 0.10);  color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.2); }
+
+.lf-dur {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--dim);
+    opacity: 0.45;
+}
+
+.lf-date {
+    font-size: 10px;
+    color: var(--dim);
+    opacity: 0.4;
+}
+
+/* ── Preview button ────────────────────────────────────────────────────────── */
+.lf-preview-btn {
+    font-size: 10px;
+    font-weight: 700;
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--cream);
+    padding: 3px 10px;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.12s, border-color 0.12s;
+    flex-shrink: 0;
+    font-family: var(--font);
+}
+
+.lf-preview-btn:hover:not(:disabled) {
+    opacity: 1;
+    border-color: var(--line-hi);
+}
+
+.lf-preview-btn:disabled {
+    opacity: 0.2;
+    cursor: default;
+}

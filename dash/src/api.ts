@@ -49,6 +49,7 @@ export interface KioskAd {
   src?: string;
   html?: string;
   submittedBy?: string;
+  submittedAt?: string; // ISO 8601
 }
 
 // Three-stage pipeline: submitted → approved → active
@@ -85,6 +86,26 @@ export async function mySubmissions(
   const res = await fetch("/api/my-submissions?email=" + encodeURIComponent(email));
   if (!res.ok) return [];
   return res.json() as Promise<SubmissionItem[]>;
+}
+
+/** Permanently retract (delete) one of the caller's own submissions, including media. */
+export async function retractMySubmission(
+  id: string,
+  email: string,
+): Promise<{ ok: boolean }> {
+  const res = await fetch(
+    `/api/my-submissions/${id}?email=` + encodeURIComponent(email),
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<{ ok: boolean }>;
+}
+
+/** Fetch the current live playlist in display order (no auth needed). */
+export async function liveFeed(): Promise<KioskAd[]> {
+  const res = await fetch("/api/live-ads");
+  if (!res.ok) return [];
+  return res.json() as Promise<KioskAd[]>;
 }
 
 export type UpdateStage =
@@ -132,6 +153,9 @@ export const adminApi = {
   // denied
   deleteDenied: (id: string) =>
     req<{ ok: boolean }>("DELETE", `/api/admin/denied/${id}`),
+  // duration
+  setDuration: (id: string, durationMs: number) =>
+    req<{ ok: boolean }>("PATCH", `/api/admin/ads/${id}/duration`, { durationMs }),
   // kiosk control
   reload: () =>
     req<{ ok: boolean; activated: number }>("POST", "/api/admin/reload"),

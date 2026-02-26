@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import type { AdType, PendingAd } from "../types";
+import PreviewModal from "./PreviewModal";
 import "./SubmitPanel.css";
 
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
@@ -16,6 +17,7 @@ const TYPE_CONFIG: Record<
     description: string;
     urlHint: string;
     warning?: string;
+    note?: string;
   }
 > = {
   image: {
@@ -38,6 +40,7 @@ const TYPE_CONFIG: Record<
     description:
       "Played as a full-screen looping video on Bernard. Accepted formats: MP4, WEBM.",
     urlHint: "Must be a direct public link ending in .mp4 or .webm.",
+    note: "Video submissions should not rely on audio — the display is in a public space and sound cannot be heard from outside.",
   },
   html: {
     label: "HTML",
@@ -180,10 +183,13 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
   const [uploadPhase, setUploadPhase] = useState<"encoding" | "uploading" | null>(null);
   const [uploadPct, setUploadPct] = useState(0);
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const cfg = TYPE_CONFIG[type];
+  // The URL to preview — set when an upload completed or a URL is pasted
+  const previewSrc = mode === "upload" ? (uploadedUrl ?? "") : url.trim();
 
   function switchType(t: AdType) {
     setType(t);
@@ -192,6 +198,7 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
     setUploadedUrl(null);
     setUploadPct(0);
     setError(null);
+    setPreviewOpen(false);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -319,7 +326,12 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
 
   return (
     <form className="sp" onSubmit={handleSubmit} noValidate>
-      {/* ── Ad type ───────────────────────────────────────────────── */}
+      {previewOpen && previewSrc && (
+        <PreviewModal
+          item={{ name: name.trim() || "Preview", type, src: previewSrc }}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
       <div className="sp-type-row">
         {(Object.keys(TYPE_CONFIG) as AdType[]).map((t) => (
           <button
@@ -332,11 +344,16 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
           </button>
         ))}
       </div>
-
-      {/* ── Type description ──────────────────────────────────────── */}
       <p className="sp-desc">{cfg.description}</p>
 
-      {/* ── HTML warning ──────────────────────────────────────────── */}
+      {/* ── Video note (audio) ─────────────────────────────────────── */}
+      {cfg.note && (
+        <div className="sp-note">
+          <p>{cfg.note}</p>
+        </div>
+      )}
+
+      {/* ── HTML warning ──────────────────────────────────────────────── */}
       {type === "html" && cfg.warning && (
         <div className="sp-warning">
           {cfg.warning.split("\n\n").map((para, i) => (
@@ -344,8 +361,6 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
           ))}
         </div>
       )}
-
-      {/* ── Name ──────────────────────────────────────────────────── */}
       <div className="sp-field">
         <label className="sp-label" htmlFor="sp-name">
           Name
@@ -360,8 +375,6 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
           onChange={(e) => setName(e.target.value)}
         />
       </div>
-      {/* Submitter identity is taken from Google sign-in — no manual field needed */}
-      {/* ── Input mode switch ─────────────────────────────────────── */}
       <div className="sp-mode-row">
         <button
           type="button"
@@ -530,13 +543,22 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
           id="sp-dur"
           className="sp-input sp-input--num"
           type="number"
-          min={1}
+          min={1} 
           max={30}
           value={duration}
           onChange={(e) => setDuration(Number(e.target.value))}
         />
       </div>
-
+      {/* ── Preview button ───────────────────────────────────────────── */}
+      {previewSrc && (
+        <button
+          type="button"
+          className="sp-preview-btn"
+          onClick={() => setPreviewOpen(true)}
+        >
+          ⊙ Preview
+        </button>
+      )}
       {/* ── Error ─────────────────────────────────────────────────── */}
       {error && <p className="sp-error">⚠ {error}</p>}
 

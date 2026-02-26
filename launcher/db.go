@@ -105,6 +105,7 @@ func recToAd(r adRecord) kioskAd {
 		DurationMs:  r.DurationMs,
 		Src:         r.Src,
 		SubmittedBy: r.SubmittedBy,
+		SubmittedAt: r.SubmittedAt,
 		Transition:  adTransition{Enter: "fade", Exit: "fade"},
 	}
 }
@@ -211,6 +212,20 @@ func dbUpdateSrc(adID, src string) {
 	saveStore()
 }
 
+// dbSetDuration updates the duration_ms of an ad.
+// Returns true when the record was found and updated.
+func dbSetDuration(adID string, durationMs int) bool {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	i := findIdx(adID)
+	if i < 0 {
+		return false
+	}
+	store.Ads[i].DurationMs = durationMs
+	saveStore()
+	return true
+}
+
 // dbSetStatus transitions an ad to a new status.
 // Returns true when the record was found and updated.
 func dbSetStatus(adID, newStatus string) bool {
@@ -251,6 +266,26 @@ func dbMoveBackToApproved(adID string) bool {
 	store.Ads[i].SortOrder = 0
 	saveStore()
 	return true
+}
+
+// dbDeleteByOwner removes an ad only when the submitter email matches.
+// Returns (src, found, owned). Caller should call deleteMediaFile(src).
+func dbDeleteByOwner(adID, email string) (src string, found bool, owned bool) {
+	storeMu.Lock()
+	defer storeMu.Unlock()
+	i := findIdx(adID)
+	if i < 0 {
+		return "", false, false
+	}
+	r := store.Ads[i]
+	// SubmittedBy is stored as "Name <email>" or bare "email"
+	if r.SubmittedBy != email && !strings.Contains(r.SubmittedBy, "<"+email+">") {
+		return "", true, false
+	}
+	src = r.Src
+	store.Ads = append(store.Ads[:i], store.Ads[i+1:]...)
+	saveStore()
+	return src, true, true
 }
 
 // dbDelete permanently removes an ad. Returns the src path and whether it existed.

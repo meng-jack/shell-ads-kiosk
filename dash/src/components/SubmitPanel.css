@@ -67,6 +67,20 @@
     font-weight: 700;
 }
 
+/* ── Info note box (e.g. video audio warning) ─── */
+.sp-note {
+    border-left: 2px solid rgba(96, 165, 250, 0.5);
+    padding: 8px 12px;
+}
+
+.sp-note p {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(147, 197, 253, 0.85);
+    line-height: 1.55;
+    margin: 0;
+}
+
 /* ── Mode switch ────────────────────────────────── */
 .sp-mode-row {
     display: flex;
@@ -374,6 +388,26 @@
     border-left: 2px solid rgba(255, 150, 150, 0.7);
     padding-left: 10px;
     line-height: 1.5;
+}
+
+/* ── Preview button ─────────────────────────────── */
+.sp-preview-btn {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--cream);
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 7px 14px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.12s, border-color 0.12s;
+    width: 100%;
+}
+
+.sp-preview-btn:hover {
+    opacity: 1;
+    border-color: rgba(255, 255, 255, 0.35);
 }
 
 /* ── Submit button ──────────────────────────────── */

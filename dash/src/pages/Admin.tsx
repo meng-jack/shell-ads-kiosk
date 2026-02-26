@@ -10,6 +10,7 @@ import {
   type UpdateStatus,
   type UpdateStage,
 } from "../api";
+import PreviewModal from "../components/PreviewModal";
 import "./Admin.css";
 
 function truncate(s: string, n: number) {
@@ -79,67 +80,6 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-// ─── Preview modal ───────────────────────────────────────────────────────────
-
-function PreviewModal({
-  ad,
-  onClose,
-}: {
-  ad: KioskAd;
-  onClose: () => void;
-}) {
-  function handleBackdrop(e: React.MouseEvent) {
-    if (e.target === e.currentTarget) onClose();
-  }
-  return (
-    <div className="adm-modal-backdrop" onClick={handleBackdrop}>
-      <div className="adm-modal">
-        <div className="adm-modal-header">
-          <div className="adm-modal-title">
-            <span className="adm-modal-name">{ad.name}</span>
-            <span className={`adm-type adm-type--${ad.type}`}>{ad.type}</span>
-          </div>
-          <button
-            className="adm-icon-btn"
-            onClick={onClose}
-            aria-label="Close"
-            title="Close"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="adm-modal-body">
-          {ad.type === "image" && ad.src && (
-            <img className="adm-preview-img" src={ad.src} alt={ad.name} />
-          )}
-          {ad.type === "video" && ad.src && (
-            <video
-              className="adm-preview-video"
-              src={ad.src}
-              controls
-              autoPlay
-              loop
-              playsInline
-            />
-          )}
-          {ad.type === "html" && ad.src && (
-            <iframe
-              className="adm-preview-iframe"
-              src={ad.src}
-              title={ad.name}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
-              referrerPolicy="no-referrer"
-            />
-          )}
-          {!ad.src && (
-            <p className="adm-modal-no-src">No preview available — media not yet cached.</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Ad row (generic) ─────────────────────────────────────────────────────────
 
 interface AdRowProps {
@@ -154,6 +94,7 @@ interface AdRowProps {
   onActivate?: () => void;   // approved → live
   onDeactivate?: () => void; // active → back to unused/approved
   onPreview?: () => void;
+  onSetDuration?: (newDurationMs: number) => void;
 }
 
 function AdRow({
@@ -168,7 +109,9 @@ function AdRow({
   onActivate,
   onDeactivate,
   onPreview,
+  onSetDuration,
 }: AdRowProps) {
+  const durSec = Math.round(ad.durationMs / 1000);
   return (
     <div className={`adm-row adm-row--${stage}`}>
       {stage === "active" ? (
@@ -246,6 +189,29 @@ function AdRow({
           >
             ▶
           </button>
+        )}
+        {onSetDuration && (
+          <span className="adm-dur-ctrl">
+            <button
+              className="adm-icon-btn adm-icon-btn--dur"
+              type="button"
+              disabled={durSec <= 1}
+              onClick={() => onSetDuration(Math.max(1000, ad.durationMs - 1000))}
+              title="Decrease duration by 1 second"
+            >
+              −
+            </button>
+            <span className="adm-dur-val">{durSec}s</span>
+            <button
+              className="adm-icon-btn adm-icon-btn--dur"
+              type="button"
+              disabled={durSec >= 30}
+              onClick={() => onSetDuration(Math.min(30000, ad.durationMs + 1000))}
+              title="Increase duration by 1 second"
+            >
+              +
+            </button>
+          </span>
         )}
         {onPreview && (
           <button
@@ -730,6 +696,19 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     await fetchAll();
   }
 
+  // ── Duration ───────────────────────────────────────────────────────────────
+  async function setAdDuration(id: string, newMs: number) {
+    // Optimistic update across all three lists (only one will match)
+    setActive((a) => a.map((x) => (x.id === id ? { ...x, durationMs: newMs } : x)));
+    setApproved((a) => a.map((x) => (x.id === id ? { ...x, durationMs: newMs } : x)));
+    setSubmitted((a) => a.map((x) => (x.id === id ? { ...x, durationMs: newMs } : x)));
+    try {
+      await adminApi.setDuration(id, newMs);
+    } catch {
+      await fetchAll();
+    }
+  }
+
   // ── Kiosk ──────────────────────────────────────────────────────────────────
   async function restartKiosk() {
     if (!confirm("Restart Bernard?")) return;
@@ -772,7 +751,14 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="adm-wrap">
       {previewAd && (
-        <PreviewModal ad={previewAd} onClose={() => setPreviewAd(null)} />
+        <PreviewModal
+          item={{
+            name: previewAd.name,
+            type: previewAd.type,
+            src: previewAd.src ?? "",
+          }}
+          onClose={() => setPreviewAd(null)}
+        />
       )}
       {/* Header */}
       <div className="adm-header">
@@ -839,6 +825,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 onPreview={() => setPreviewAd(ad)}
                 onActivate={() => activateApproved(ad.id)}
                 onDelete={() => deleteApproved(ad.id)}
+                onSetDuration={(ms) => setAdDuration(ad.id, ms)}
               />
             ))}
             {/* Pending/submitted ads shown below approved */}
@@ -850,6 +837,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 onPreview={() => setPreviewAd(ad)}
                 onApprove={() => approveSubmitted(ad.id)}
                 onDelete={() => deleteSubmitted(ad.id)}
+                onSetDuration={(ms) => setAdDuration(ad.id, ms)}
               />
             ))}
           </div>
@@ -891,6 +879,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 onMoveDown={() => move(i, 1)}
                 onDeactivate={() => deactivateActive(ad.id)}
                 onDelete={() => deleteActive(ad.id)}
+                onSetDuration={(ms) => setAdDuration(ad.id, ms)}
               />
             ))}
           </div>

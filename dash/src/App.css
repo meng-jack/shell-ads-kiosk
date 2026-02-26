@@ -121,13 +121,21 @@
 .sub-profile-bar {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
-    max-width: 460px;
+    max-width: 760px;
     background: var(--surface);
     border: 1px solid var(--line);
     padding: 10px 16px;
     margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.sub-profile-tabs {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
 }
 
 .sub-profile-avatar {

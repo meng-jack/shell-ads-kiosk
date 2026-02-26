@@ -83,6 +83,7 @@ type kioskAd struct {
 	HTML        string       `json:"html,omitempty"`
 	Transition  adTransition `json:"transition"`
 	SubmittedBy string       `json:"submittedBy,omitempty"`
+	SubmittedAt string       `json:"submittedAt,omitempty"`
 }
 
 // dashAd is the shape the React dashboard POSTs to /api/force-ads.
@@ -314,9 +315,11 @@ func serveDash() {
 	mux.HandleFunc("POST /api/submit-ads", handleSubmitAds)
 	mux.HandleFunc("POST /api/activate", handleActivate)
 	mux.HandleFunc("GET /api/playlist", handlePlaylist)
+	mux.HandleFunc("GET /api/live-ads", handleLiveAds)
 	mux.HandleFunc("GET /api/kiosk/nav-poll", handleNavPoll)    // kiosk long-polls this
 	mux.HandleFunc("GET /api/submission-status", handleSubmissionStatus)  // public: poll ad status by IDs
 	mux.HandleFunc("GET /api/my-submissions", handleMySubmissions)         // public: all submissions for a submitter email
+	mux.HandleFunc("DELETE /api/my-submissions/{id}", handleRetractMySubmission) // public: retract own submission
 	mux.HandleFunc("POST /api/upload-media", handleUploadMedia)             // public: upload media file as base64/text
 
 	// ── Serve locally-cached media files ──────────────────────────────────────────
@@ -340,6 +343,7 @@ func serveDash() {
 	mux.HandleFunc("DELETE /api/admin/submitted/{id}", requireAdmin(handleAdminDeleteSubmitted))
 	mux.HandleFunc("DELETE /api/admin/approved/{id}", requireAdmin(handleAdminDeleteApproved))
 	mux.HandleFunc("DELETE /api/admin/denied/{id}", requireAdmin(handleAdminDeleteDenied))
+	mux.HandleFunc("PATCH /api/admin/ads/{id}/duration", requireAdmin(handleAdminSetDuration))
 	mux.HandleFunc("POST /api/admin/submitted/{id}/approve", requireAdmin(handleAdminApproveSubmitted))
 	mux.HandleFunc("POST /api/admin/approved/{id}/activate", requireAdmin(handleAdminActivateApproved))
 	mux.HandleFunc("POST /api/admin/active/{id}/deactivate", requireAdmin(handleAdminDeactivateActive))
@@ -513,6 +517,14 @@ func handlePlaylist(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resolved)
 }
 
+// handleLiveAds is a browser-friendly public endpoint that returns
+// the live playlist with /media/ paths kept as relative URLs.
+func handleLiveAds(w http.ResponseWriter, r *http.Request) {
+	ads := dbLiveOrdered()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(ads)
+}
+
 // ─── Admin API handlers ───────────────────────────────────────────────────────
 
 func handleAdminAuth(w http.ResponseWriter, r *http.Request) {
@@ -650,6 +662,59 @@ func handleAdminDeleteDenied(w http.ResponseWriter, r *http.Request) {
 	}
 	deleteMediaFile(src)
 	log.Printf("Admin: permanently deleted denied ad %q", id)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// handleAdminSetDuration updates the duration of any ad (any status) by ID.
+// Body: { "durationMs": <int> }  —  clamped to [1000, 30000].
+func handleAdminSetDuration(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var body struct {
+		DurationMs int `json:"durationMs"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad JSON", http.StatusBadRequest)
+		return
+	}
+	// Clamp to the same bounds the kiosk enforces.
+	const minMs, maxMs = 1000, 30000
+	if body.DurationMs < minMs {
+		body.DurationMs = minMs
+	}
+	if body.DurationMs > maxMs {
+		body.DurationMs = maxMs
+	}
+	if !dbSetDuration(id, body.DurationMs) {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+	log.Printf("Admin: set duration of ad %q to %d ms", id, body.DurationMs)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// handleRetractMySubmission lets a submitter permanently delete one of their
+// own ads regardless of its current status. The media file is also removed.
+// Query param: email (used as the ownership key, same as other public endpoints).
+func handleRetractMySubmission(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	email := strings.TrimSpace(r.URL.Query().Get("email"))
+	if email == "" {
+		http.Error(w, `{"error":"email required"}`, http.StatusBadRequest)
+		return
+	}
+	src, found, owned := dbDeleteByOwner(id, email)
+	if !found {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+	if !owned {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	deleteMediaFile(src)
+	log.Printf("User retracted ad %q (submitted by %s)", id, email)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }

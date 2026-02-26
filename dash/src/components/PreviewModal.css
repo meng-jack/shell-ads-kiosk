@@ -1,0 +1,128 @@
+/* ── Backdrop ──────────────────────────────────────────────────────────────── */
+.pm-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.80);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
+    padding: 24px;
+}
+
+/* ── Modal shell ───────────────────────────────────────────────────────────── */
+.pm-modal {
+    background: #1a1010;
+    border: 1px solid var(--line-hi);
+    width: 100%;
+    max-width: 840px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* ── Header ────────────────────────────────────────────────────────────────── */
+.pm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+}
+
+.pm-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.pm-name {
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pm-close {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--cream);
+    font-size: 12px;
+    font-weight: 800;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.6;
+    transition: opacity 0.12s;
+    font-family: var(--font);
+}
+
+.pm-close:hover {
+    opacity: 1;
+}
+
+/* ── Body — strict 16:9 ────────────────────────────────────────────────────── */
+.pm-body {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #0d0808;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pm-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.pm-video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.pm-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+    position: absolute;
+    inset: 0;
+}
+
+/* ── Type badges ───────────────────────────────────────────────────────────── */
+.pm-type {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    flex-shrink: 0;
+}
+
+.pm-type--image { background: rgba(96, 165, 250, 0.12); color: #93c5fd; border: 1px solid rgba(96, 165, 250, 0.2); }
+.pm-type--video { background: rgba(167, 139, 250, 0.12); color: #c4b5fd; border: 1px solid rgba(167, 139, 250, 0.2); }
+.pm-type--html  { background: rgba(52, 211, 153, 0.10);  color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.2); }
+
+/* ── No-source placeholder ─────────────────────────────────────────────────── */
+.pm-no-src {
+    font-size: 12px;
+    color: var(--dim);
+    opacity: 0.45;
+    text-align: center;
+    padding: 0 24px;
+}

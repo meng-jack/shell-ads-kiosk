@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { GoogleLogin } from "@react-oauth/google";
 import SubmitPanel from "../components/SubmitPanel";
 import AdQueue from "../components/AdQueue";
+import LiveFeed from "../components/LiveFeed";
 import type { PendingAd } from "../types";
-import { mySubmissions, type SubmissionItem } from "../api";
+import { mySubmissions, retractMySubmission, type SubmissionItem } from "../api";
 import { useAuth, type GoogleUser } from "../AuthContext";
 import "../App.css";
 
@@ -120,7 +121,7 @@ function ProfileBar({
 export default function Submit() {
   const { user } = useAuth();
   const [submissions, setSubmissions] = useState<PendingAd[]>([]);
-  const [view, setView] = useState<"submit" | "history">("submit");
+  const [view, setView] = useState<"submit" | "history" | "live">("submit");
   const pollRef = useRef<number>();
 
   const fetchSubmissions = useCallback(async (email: string) => {
@@ -161,7 +162,7 @@ export default function Submit() {
       <ProfileBar
         user={user}
         view={view}
-        onToggleView={() => setView(view === "submit" ? "history" : "submit")}
+        onSetView={setView}
       />
       <p className="wordmark">Startup Shell</p>
 
@@ -174,14 +175,21 @@ export default function Submit() {
               submitterEmail={user.email}
               onSubmit={handleSubmit}
             />
-            <AdQueue ads={submissions} />
+            <AdQueue ads={submissions} onRetract={handleRetract} />
+          </div>
+        </>
+      ) : view === "history" ? (
+        <>
+          <p className="page-title">My Submissions</p>
+          <div className="container container--wide">
+            <AdQueue ads={submissions} fullView onRetract={handleRetract} />
           </div>
         </>
       ) : (
         <>
-          <p className="page-title">My Submissions</p>
+          <p className="page-title">Live Now</p>
           <div className="container container--wide">
-            <AdQueue ads={submissions} fullView />
+            <LiveFeed />
           </div>
         </>
       )}
