@@ -337,6 +337,71 @@ function App() {
     };
   }, [navigate]);
 
+  // ── Kiosk screenshot capture (every 5 s → send to launcher) ───────────────
+  useEffect(() => {
+    let stop = false;
+
+    async function captureAndSend() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 180;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const video = document.querySelector<HTMLVideoElement>(".ad-card video");
+      const img = document.querySelector<HTMLImageElement>(".ad-card img");
+
+      try {
+        if (video && video.readyState >= 2) {
+          ctx.drawImage(video, 0, 0, 320, 180);
+        } else if (img && img.complete && img.naturalWidth > 0) {
+          ctx.drawImage(img, 0, 0, 320, 180);
+        } else {
+          ctx.fillStyle = "#111111";
+          ctx.fillRect(0, 0, 320, 180);
+          ctx.fillStyle = "rgba(255,255,255,0.15)";
+          ctx.font = "12px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("No media", 160, 90);
+        }
+      } catch {
+        // Canvas tainted (cross-origin) — draw placeholder
+        ctx.fillStyle = "#111111";
+        ctx.fillRect(0, 0, 320, 180);
+        ctx.fillStyle = "rgba(255,255,255,0.1)";
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("No capture", 160, 90);
+      }
+
+      try {
+        const blob = await new Promise<Blob | null>((resolve) => {
+          try {
+            canvas.toBlob(resolve, "image/jpeg", 0.6);
+          } catch {
+            resolve(null);
+          }
+        });
+        if (blob && !stop) {
+          await fetch("http://localhost:6969/api/kiosk/screenshot", {
+            method: "POST",
+            headers: { "Content-Type": "image/jpeg" },
+            body: blob,
+          });
+        }
+      } catch {
+        // Silent fail — screenshot is best-effort
+      }
+    }
+
+    captureAndSend();
+    const id = window.setInterval(captureAndSend, 5000);
+    return () => {
+      stop = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
   // ── Dev-mode countdown ticker ──────────────────────────────────────────────
   useEffect(() => {
     if (!devMode || !ads.length) return;

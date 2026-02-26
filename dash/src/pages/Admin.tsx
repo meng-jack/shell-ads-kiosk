@@ -5,6 +5,7 @@ import {
   getToken,
   setToken,
   NotFoundError,
+  fetchKioskScreenshot,
   type AdminStats,
   type KioskAd,
   type UpdateStatus,
@@ -137,6 +138,55 @@ function Preview({ ad, onClose }: { ad: KioskAd; onClose: () => void }) {
   );
 }
 
+// ─── Kiosk screenshot panel ─────────────────────────────────────────────────────────
+
+function KioskScreenshot() {
+  const [imgUrl, setImgUrl] = useState<string | null>(null);
+  const [takenAt, setTakenAt] = useState<string>("");
+  const prevUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
+
+    async function refresh() {
+      const result = await fetchKioskScreenshot(token!);
+      if (!result) return;
+      // Revoke previous object URL to prevent memory leaks
+      if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
+      const url = URL.createObjectURL(result.blob);
+      prevUrlRef.current = url;
+      setImgUrl(url);
+      setTakenAt(result.takenAt);
+    }
+
+    refresh();
+    const id = window.setInterval(refresh, 5000);
+    return () => {
+      clearInterval(id);
+      if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
+    };
+  }, []);
+
+  return (
+    <div className="adm-screenshot">
+      <div className="adm-screenshot-header">
+        <span className="adm-stat-label">Live Kiosk</span>
+        {takenAt && (
+          <span className="adm-screenshot-time">
+            {new Date(takenAt).toLocaleTimeString()}
+          </span>
+        )}
+      </div>
+      {imgUrl ? (
+        <img src={imgUrl} alt="Kiosk screenshot" className="adm-screenshot-img" />
+      ) : (
+        <div className="adm-screenshot-placeholder">No screenshot yet</div>
+      )}
+    </div>
+  );
+}
+
 // ─── Ad row (generic) ─────────────────────────────────────────────────────────
 
 interface AdRowProps {
@@ -176,8 +226,9 @@ function AdRow({
         <span className="adm-row-num adm-row-num--submitted">•</span>
       )}
       <div className="adm-row-info">
-        <span className="adm-row-name">{ad.name}</span>
-        <span className="adm-row-meta">
+        <span className="adm-row-name">{ad.name}</span>        {ad.submittedBy && (
+          <span className="adm-row-submitted-by">by {ad.submittedBy}</span>
+        )}        <span className="adm-row-meta">
           <span className={`adm-type adm-type--${ad.type}`}>{ad.type}</span>
           <span className="adm-row-dur">
             {(ad.durationMs / 1000).toFixed(0)}s
@@ -542,6 +593,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [active, setActive] = useState<KioskAd[]>([]);
   const [approved, setApproved] = useState<KioskAd[]>([]);
   const [submitted, setSubmitted] = useState<KioskAd[]>([]);
+  const [denied, setDenied] = useState<KioskAd[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -561,6 +613,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       setActive(s.active);
       setApproved(s.approved);
       setSubmitted(s.submitted);
+      setDenied(s.denied ?? []);
       setStats(st);
       setErr(null);
     } catch (e: unknown) {
@@ -687,6 +740,18 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  async function deleteDenied(id: string) {
+    setDenied((d) => d.filter((x) => x.id !== id));
+    try {
+      await adminApi.deleteDenied(id);
+      showToast("Removed from denied.");
+    } catch (e) {
+      if (e instanceof NotFoundError)
+        showToast("Already removed by another admin.");
+      await fetchAll();
+    }
+  }
+
   async function approveAllSubmitted() {
     let notFound = 0;
     for (const ad of submitted) {
@@ -766,7 +831,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         onPrev={kioskPrev}
       />
 
-      {/* Update */}
+      {/* Kiosk screenshot */}
+      <KioskScreenshot />
+
+      {/* Update */}}
       <UpdatePanel />
 
       {err && (
@@ -868,7 +936,52 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         )}
       </section>
 
-      {preview && <Preview ad={preview} onClose={() => setPreview(null)} />}
+      {/* ── Section 3: Denied ads ──────────────────────────────────────────── */}
+      {denied.length > 0 && (
+        <>
+          <div className="adm-rule" />
+          <section className="adm-section">
+            <div className="adm-section-header">
+              <span className="adm-section-title">Denied</span>
+              <span className="adm-section-sub">Rejected submissions — kept so submitters can see status</span>
+              <span className="adm-count">{denied.length}</span>
+            </div>
+            <div className="adm-list">
+              {denied.map((ad) => (
+                <div key={ad.id} className="adm-row adm-row--denied">
+                  <span className="adm-row-num adm-row-num--denied">✕</span>
+                  <div className="adm-row-info">
+                    <span className="adm-row-name">{ad.name}</span>
+                    {ad.submittedBy && (
+                      <span className="adm-row-submitted-by">by {ad.submittedBy}</span>
+                    )}
+                    <span className="adm-row-meta">
+                      <span className={`adm-type adm-type--${ad.type}`}>{ad.type}</span>
+                      <span className="adm-badge adm-badge--denied">denied</span>
+                      {ad.src && (
+                        <span className="adm-row-url" title={ad.src}>
+                          {truncate(ad.src, 38)}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="adm-row-actions">
+                    <button
+                      className="adm-icon-btn adm-icon-btn--del"
+                      onClick={() => deleteDenied(ad.id)}
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+
+      {preview && <Preview ad={preview} onClose={() => setPreview(null)} />}}
       {toast && <div className="adm-toast">{toast}</div>}
     </div>
   );

@@ -48,6 +48,7 @@ export interface KioskAd {
   durationMs: number;
   src?: string;
   html?: string;
+  submittedBy?: string;
 }
 
 // Three-stage pipeline: submitted → approved → active
@@ -55,13 +56,42 @@ export interface AdminState {
   active: KioskAd[];
   approved: KioskAd[];
   submitted: KioskAd[];
+  denied: KioskAd[];
 }
 
 export interface AdminStats {
   kiosk: { running: boolean; pid: number; uptimeSec: number; restarts: number };
-  playlist: { active: number; approved: number; submitted: number };
+  playlist: { active: number; approved: number; submitted: number; denied: number };
   build: string;
   updating: boolean;
+}
+
+export interface SubmissionStatusEntry {
+  id: string;
+  status: "pending" | "approved" | "live" | "denied" | "unknown";
+}
+
+/** Fetch submission statuses for a list of ad IDs (no auth needed). */
+export async function submissionStatus(
+  ids: string[],
+): Promise<SubmissionStatusEntry[]> {
+  if (ids.length === 0) return [];
+  const res = await fetch("/api/submission-status?ids=" + ids.join(","));
+  if (!res.ok) return [];
+  return res.json() as Promise<SubmissionStatusEntry[]>;
+}
+
+/** Fetch the latest kiosk screenshot blob. Returns null when not available (204). */
+export async function fetchKioskScreenshot(
+  token: string,
+): Promise<{ blob: Blob; takenAt: string } | null> {
+  const res = await fetch("/api/admin/kiosk-screenshot", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 204 || !res.ok) return null;
+  const blob = await res.blob();
+  const takenAt = res.headers.get("X-Screenshot-At") ?? "";
+  return { blob, takenAt };
 }
 
 export type UpdateStage =
@@ -106,6 +136,9 @@ export const adminApi = {
     req<{ ok: boolean }>("POST", `/api/admin/submitted/${id}/approve`),
   deleteSubmitted: (id: string) =>
     req<{ ok: boolean }>("DELETE", `/api/admin/submitted/${id}`),
+  // denied
+  deleteDenied: (id: string) =>
+    req<{ ok: boolean }>("DELETE", `/api/admin/denied/${id}`),
   // kiosk control
   reload: () =>
     req<{ ok: boolean; activated: number }>("POST", "/api/admin/reload"),

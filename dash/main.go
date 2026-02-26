@@ -20,25 +20,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(subFS)))
 	mux.HandleFunc("/api/status", handleStatus)
-
-	fmt.Println("┌─────────────────────────────────────────┐")
-	fmt.Println("│     Startup Shell Dashboard             │")
-	fmt.Println("├─────────────────────────────────────────┤")
-	fmt.Println("│  Local:   http://localhost:6969         │")
-	fmt.Println("│  Tunnel:  https://shellnews.exoad.net   │")
-	fmt.Println("└─────────────────────────────────────────┘")
-
 	log.Fatal(http.ListenAndServe(":6969", mux))
 }
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-
 	uptime := time.Since(startTime)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status":         "online",

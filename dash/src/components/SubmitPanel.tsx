@@ -56,7 +56,7 @@ const TYPE_CONFIG: Record<
 type InputMode = "upload" | "url";
 
 interface Props {
-  onSubmit: (ad: PendingAd) => void;
+  onSubmit: (ad: PendingAd, submittedBy: string) => void;
 }
 
 function fmtBytes(b: number): string {
@@ -143,6 +143,7 @@ function validateUrlExt(
 export default function SubmitPanel({ onSubmit }: Props) {
   const [mode, setMode] = useState<InputMode>("upload");
   const [name, setName] = useState("");
+  const [submitterName, setSubmitterName] = useState("");
   const [type, setType] = useState<AdType>("image");
   const [url, setUrl] = useState("");
   const [duration, setDuration] = useState(15);
@@ -223,6 +224,7 @@ export default function SubmitPanel({ onSubmit }: Props) {
 
   function validate(): string | null {
     if (!name.trim()) return "Name is required.";
+    if (!submitterName.trim()) return "Your name is required.";
     const finalUrl = mode === "upload" ? (uploadedUrl ?? "") : url.trim();
     if (!finalUrl)
       return mode === "upload"
@@ -251,15 +253,20 @@ export default function SubmitPanel({ onSubmit }: Props) {
     }
     setError(null);
     const finalUrl = mode === "upload" ? uploadedUrl! : url.trim();
-    onSubmit({
-      id: crypto.randomUUID(),
-      name: name.trim(),
-      type,
-      url: finalUrl,
-      durationSec: duration,
-      status: "pending",
-      submittedAt: new Date(),
-    });
+    const trimmedSubmitter = submitterName.trim();
+    onSubmit(
+      {
+        id: crypto.randomUUID(),
+        name: name.trim(),
+        type,
+        url: finalUrl,
+        durationSec: duration,
+        status: "pending",
+        submittedAt: new Date(),
+        submittedBy: trimmedSubmitter,
+      },
+      trimmedSubmitter,
+    );
     setOk(true);
     setTimeout(() => setOk(false), 2500);
     setName("");
@@ -314,7 +321,21 @@ export default function SubmitPanel({ onSubmit }: Props) {
           onChange={(e) => setName(e.target.value)}
         />
       </div>
-
+      {/* ── Submitter name ────────────────────────────────────────────── */}
+      <div className="sp-field">
+        <label className="sp-label" htmlFor="sp-submitter">
+          Your name
+        </label>
+        <input
+          id="sp-submitter"
+          className="sp-input"
+          type="text"
+          placeholder="Jane Smith"
+          value={submitterName}
+          maxLength={80}
+          onChange={(e) => setSubmitterName(e.target.value)}
+        />
+      </div>
       {/* ── Input mode switch ─────────────────────────────────────── */}
       <div className="sp-mode-row">
         <button

@@ -74,13 +74,14 @@ type adTransition struct {
 }
 
 type kioskAd struct {
-	ID         string       `json:"id"`
-	Name       string       `json:"name"`
-	Type       string       `json:"type"`
-	DurationMs int          `json:"durationMs"`
-	Src        string       `json:"src,omitempty"`
-	HTML       string       `json:"html,omitempty"`
-	Transition adTransition `json:"transition"`
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Type        string       `json:"type"`
+	DurationMs  int          `json:"durationMs"`
+	Src         string       `json:"src,omitempty"`
+	HTML        string       `json:"html,omitempty"`
+	Transition  adTransition `json:"transition"`
+	SubmittedBy string       `json:"submittedBy,omitempty"`
 }
 
 // dashAd is the shape the React dashboard POSTs to /api/force-ads.
@@ -90,6 +91,7 @@ type dashAd struct {
 	Type        string `json:"type"` // "image" | "video" | "html"
 	URL         string `json:"url"`
 	DurationSec int    `json:"durationSec"`
+	SubmittedBy string `json:"submittedBy"`
 }
 
 // ─── Global state ─────────────────────────────────────────────────────────────
@@ -115,12 +117,18 @@ var (
 	submittedAds []kioskAd
 	approvedAds  []kioskAd
 	forcedAds    []kioskAd
+	deniedAds    []kioskAd // submitted ads rejected by admin — kept so submitters can see "denied"
 
 	// navCmdCh carries "next" or "prev" commands from the admin dashboard.
 	navCmdCh = make(chan string, 8)
 
 	// mediaDir is where user-uploaded files are stored and served from.
 	mediaDir string
+
+	// kiosk screenshot — latest JPEG sent by the kiosk frontend every ~5 s.
+	screenshotMu  sync.RWMutex
+	kioskScreenshot []byte
+	screenshotAt  time.Time
 )
 
 // ─── Admin auth ───────────────────────────────────────────────────────────────
@@ -279,7 +287,9 @@ func serveDash() {
 	mux.HandleFunc("POST /api/submit-ads", handleSubmitAds)
 	mux.HandleFunc("POST /api/activate", handleActivate)
 	mux.HandleFunc("GET /api/playlist", handlePlaylist)
-	mux.HandleFunc("GET /api/kiosk/nav-poll", handleNavPoll) // kiosk long-polls this
+	mux.HandleFunc("GET /api/kiosk/nav-poll", handleNavPoll)    // kiosk long-polls this
+	mux.HandleFunc("POST /api/kiosk/screenshot", handleKioskScreenshot) // kiosk posts screenshot
+	mux.HandleFunc("GET /api/submission-status", handleSubmissionStatus)  // public: poll ad status by IDs
 
 	// ── Serve locally-cached media files ──────────────────────────────────────────
 	mux.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.Dir(mediaDir))))
@@ -294,6 +304,7 @@ func serveDash() {
 	mux.HandleFunc("DELETE /api/admin/active/{id}", requireAdmin(handleAdminDeleteActive))
 	mux.HandleFunc("DELETE /api/admin/submitted/{id}", requireAdmin(handleAdminDeleteSubmitted))
 	mux.HandleFunc("DELETE /api/admin/approved/{id}", requireAdmin(handleAdminDeleteApproved))
+	mux.HandleFunc("DELETE /api/admin/denied/{id}", requireAdmin(handleAdminDeleteDenied))
 	mux.HandleFunc("POST /api/admin/submitted/{id}/approve", requireAdmin(handleAdminApproveSubmitted))
 	mux.HandleFunc("POST /api/admin/approved/{id}/activate", requireAdmin(handleAdminActivateApproved))
 	mux.HandleFunc("POST /api/admin/active/{id}/deactivate", requireAdmin(handleAdminDeactivateActive))
@@ -304,6 +315,7 @@ func serveDash() {
 	mux.HandleFunc("POST /api/admin/kiosk/prev", requireAdmin(handleAdminKioskPrev))
 	mux.HandleFunc("POST /api/admin/trigger-update", requireAdmin(handleAdminTriggerUpdate))
 	mux.HandleFunc("GET /api/admin/update-status", requireAdmin(handleAdminUpdateStatus))
+	mux.HandleFunc("GET /api/admin/kiosk-screenshot", requireAdmin(handleAdminKioskScreenshot))
 	mux.HandleFunc("DELETE /api/admin/logout", requireAdmin(handleAdminLogout))
 
 	// ── SPA fallback ──────────────────────────────────────────────────────────
@@ -434,12 +446,13 @@ func handleSubmitAds(w http.ResponseWriter, r *http.Request) {
 	ads := make([]kioskAd, 0, len(incoming))
 	for _, d := range incoming {
 		ad := kioskAd{
-			ID:         d.ID,
-			Name:       d.Name,
-			Type:       d.Type,
-			DurationMs: d.DurationSec * 1000,
-			Src:        d.URL, // may be a file.io/CDN URL — downloaded below
-			Transition: adTransition{Enter: "fade", Exit: "fade"},
+			ID:          d.ID,
+			Name:        d.Name,
+			Type:        d.Type,
+			DurationMs:  d.DurationSec * 1000,
+			Src:         d.URL, // may be a file.io/CDN URL — downloaded below
+			Transition:  adTransition{Enter: "fade", Exit: "fade"},
+			SubmittedBy: d.SubmittedBy,
 		}
 		ads = append(ads, ad)
 	}
@@ -544,6 +557,7 @@ func handleAdminState(w http.ResponseWriter, r *http.Request) {
 	active := forcedAds
 	approved := approvedAds
 	submitted := submittedAds
+	denied := deniedAds
 	playlistMu.RUnlock()
 
 	if active == nil {
@@ -555,12 +569,16 @@ func handleAdminState(w http.ResponseWriter, r *http.Request) {
 	if submitted == nil {
 		submitted = []kioskAd{}
 	}
+	if denied == nil {
+		denied = []kioskAd{}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"active":    active,
 		"approved":  approved,
 		"submitted": submitted,
+		"denied":    denied,
 	})
 }
 
@@ -576,6 +594,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	nActive := len(forcedAds)
 	nApproved := len(approvedAds)
 	nSubmitted := len(submittedAds)
+	nDenied := len(deniedAds)
 	playlistMu.RUnlock()
 
 	var uptimeSec float64
@@ -595,6 +614,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 			"active":    nActive,
 			"approved":  nApproved,
 			"submitted": nSubmitted,
+			"denied":    nDenied,
 		},
 		"build":    BuildNumber,
 		"updating": updating.Load(),
@@ -665,6 +685,7 @@ func handleAdminDeleteSubmitted(w http.ResponseWriter, r *http.Request) {
 	n := submittedAds[:0:0]
 	for _, a := range submittedAds {
 		if a.ID == id {
+			deniedAds = append(deniedAds, a) // keep for submitter status polling
 			found = true
 		} else {
 			n = append(n, a)
@@ -678,7 +699,7 @@ func handleAdminDeleteSubmitted(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
 		return
 	}
-	log.Printf("Admin: rejected submitted %q", id)
+	log.Printf("Admin: denied submitted %q", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
@@ -706,6 +727,113 @@ func handleAdminDeleteApproved(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Admin: removed approved %q", id)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// handleAdminDeleteDenied permanently removes an ad from the denied list.
+func handleAdminDeleteDenied(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	playlistMu.Lock()
+	found := false
+	n := deniedAds[:0:0]
+	for _, a := range deniedAds {
+		if a.ID == id {
+			found = true
+		} else {
+			n = append(n, a)
+		}
+	}
+	if found {
+		deniedAds = n
+	}
+	playlistMu.Unlock()
+	if !found {
+		http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+// handleSubmissionStatus is a public endpoint that lets submitters poll the
+// current status of their ads by ID. Returns [{id, status}] for each queried ID.
+// Status values: "pending" | "approved" | "live" | "denied" | "unknown"
+func handleSubmissionStatus(w http.ResponseWriter, r *http.Request) {
+	raw := strings.TrimSpace(r.URL.Query().Get("ids"))
+	if raw == "" {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]any{})
+		return
+	}
+	ids := strings.Split(raw, ",")
+
+	playlistMu.RLock()
+	statusMap := make(map[string]string, len(ids))
+	for _, a := range submittedAds {
+		statusMap[a.ID] = "pending"
+	}
+	for _, a := range approvedAds {
+		statusMap[a.ID] = "approved"
+	}
+	for _, a := range forcedAds {
+		statusMap[a.ID] = "live"
+	}
+	for _, a := range deniedAds {
+		statusMap[a.ID] = "denied"
+	}
+	playlistMu.RUnlock()
+
+	type item struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	out := make([]item, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		st, ok := statusMap[id]
+		if !ok {
+			st = "unknown"
+		}
+		out = append(out, item{ID: id, Status: st})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// handleKioskScreenshot receives a JPEG (or any image blob) from the kiosk
+// frontend, stores it in memory, and timestamps it. The admin dashboard polls
+// handleAdminKioskScreenshot to display it.
+func handleKioskScreenshot(w http.ResponseWriter, r *http.Request) {
+	const maxBytes = 2 << 20 // 2 MB — more than enough for a low-res JPEG
+	data, err := io.ReadAll(io.LimitReader(r.Body, maxBytes))
+	if err != nil || len(data) == 0 {
+		http.Error(w, "bad body", http.StatusBadRequest)
+		return
+	}
+	screenshotMu.Lock()
+	kioskScreenshot = data
+	screenshotAt = time.Now()
+	screenshotMu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleAdminKioskScreenshot serves the latest kiosk screenshot as a JPEG.
+// Returns 204 No Content when no screenshot has been received yet.
+func handleAdminKioskScreenshot(w http.ResponseWriter, r *http.Request) {
+	screenshotMu.RLock()
+	data := kioskScreenshot
+	at := screenshotAt
+	screenshotMu.RUnlock()
+	if len(data) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("X-Screenshot-At", at.UTC().Format(time.RFC3339))
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(data)
 }
 
 func handleAdminApproveSubmitted(w http.ResponseWriter, r *http.Request) {
