@@ -439,3 +439,24 @@
     color: var(--cream);
     opacity: 0.7;
 }
+
+/* ── Restart warning banner ────────────────────────────────────────────── */
+.sp-restart-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: rgba(255, 186, 8, 0.12);
+    border: 1px solid rgba(255, 186, 8, 0.35);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #f5c842;
+    line-height: 1.45;
+    margin-bottom: 4px;
+}
+
+.sp-restart-warning-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+    margin-top: 1px;
+}

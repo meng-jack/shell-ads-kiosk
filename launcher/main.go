@@ -137,7 +137,16 @@ var (
 	// mediaDir is where user-uploaded files are stored and served from.
 	mediaDir string
 
+	// nextAutoRestartMu protects nextAutoRestartAt.
+	nextAutoRestartMu sync.RWMutex
+	nextAutoRestartAt time.Time
 )
+
+// launcherStartedAt records when the launcher process started.
+var launcherStartedAt = time.Now()
+
+// activeUploads counts /api/upload-media requests currently in flight.
+var activeUploads atomic.Int32
 
 // ─── Admin auth ───────────────────────────────────────────────────────────────
 
@@ -262,16 +271,41 @@ func main() {
 	// 5. Launch the kiosk and restart it if it ever exits unexpectedly
 	go monitorKiosk(filepath.Join(exeDir, kioskBin))
 
-	// 6. Auto-restart the kiosk every hour to prevent memory / rendering drift.
-	//    This is identical to pressing the "Restart Bernard" button in the admin
-	//    dashboard: stopKiosk kills the process and monitorKiosk relaunches it.
+	// 6. Auto-restart the kiosk every 3 hours to prevent memory / rendering drift.
+	//    Before restarting, we wait (up to 90 s) for any in-progress uploads to
+	//    finish so users are never mid-upload when Bernard cycles.  This is
+	//    identical to pressing "Restart Bernard" in the admin dashboard: stopKiosk
+	//    kills the process and monitorKiosk relaunches it.
 	go func() {
-		const kioskAutoRestartInterval = 1 * time.Hour
+		const kioskAutoRestartInterval = 3 * time.Hour
+		// Set the first expected restart time so the warning endpoint can inform
+		// the dashboard and submit page immediately on startup.
+		nextAutoRestartMu.Lock()
+		nextAutoRestartAt = time.Now().Add(kioskAutoRestartInterval)
+		nextAutoRestartMu.Unlock()
+
 		t := time.NewTicker(kioskAutoRestartInterval)
 		defer t.Stop()
 		for range t.C {
-			log.Printf("Auto-restart: scheduled hourly kiosk restart")
+			log.Printf("Auto-restart: scheduled 3-hour kiosk restart")
+
+			// Graceful wait: poll until no uploads are in flight, or 90 s max.
+			const maxWait = 90 * time.Second
+			const pollInterval = 2 * time.Second
+			for waited := time.Duration(0); activeUploads.Load() > 0 && waited < maxWait; waited += pollInterval {
+				log.Printf("Auto-restart: %d upload(s) active — waiting %s…", activeUploads.Load(), pollInterval)
+				time.Sleep(pollInterval)
+			}
+			if n := activeUploads.Load(); n > 0 {
+				log.Printf("Auto-restart: max wait exceeded (%s) — proceeding with %d active upload(s)", maxWait, n)
+			}
+
 			stopKiosk()
+
+			// Update next restart time for the warning endpoint.
+			nextAutoRestartMu.Lock()
+			nextAutoRestartAt = time.Now().Add(kioskAutoRestartInterval)
+			nextAutoRestartMu.Unlock()
 		}
 	}()
 
@@ -339,6 +373,7 @@ func serveDash() {
 	mux.HandleFunc("GET /api/my-submissions", handleMySubmissions)         // public: all submissions for a submitter email
 	mux.HandleFunc("DELETE /api/my-submissions/{id}", handleRetractMySubmission) // public: retract own submission
 	mux.HandleFunc("POST /api/upload-media", handleUploadMedia)             // public: upload media file as base64/text
+	mux.HandleFunc("GET /api/restart-warning", handleRestartWarning)        // public: upcoming scheduled kiosk restart info
 
 	// ── Serve locally-cached media files ──────────────────────────────────────────
 	mux.HandleFunc("/media/", func(w http.ResponseWriter, r *http.Request) {
@@ -599,6 +634,18 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		uptimeSec = time.Since(startedAt).Seconds()
 	}
 
+	launcherUptimeSec := time.Since(launcherStartedAt).Seconds()
+
+	nextAutoRestartMu.RLock()
+	nextRestart := nextAutoRestartAt
+	nextAutoRestartMu.RUnlock()
+	var nextAutoRestartSec float64
+	if !nextRestart.IsZero() {
+		if d := time.Until(nextRestart); d > 0 {
+			nextAutoRestartSec = d.Seconds()
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"kiosk": map[string]any{
@@ -613,8 +660,34 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 			"submitted": counts[adStatusSubmitted],
 			"denied":    counts[adStatusDenied],
 		},
-		"build":    BuildNumber,
-		"updating": updating.Load(),
+		"build":              BuildNumber,
+		"updating":           updating.Load(),
+		"launcherUptimeSec":  launcherUptimeSec,
+		"nextAutoRestartSec": nextAutoRestartSec,
+	})
+}
+
+// handleRestartWarning is a public (no-auth) endpoint the submit page polls
+// to show a heads-up banner before the scheduled kiosk auto-restart.
+func handleRestartWarning(w http.ResponseWriter, r *http.Request) {
+	nextAutoRestartMu.RLock()
+	next := nextAutoRestartAt
+	nextAutoRestartMu.RUnlock()
+
+	var secUntil float64
+	withinWindow := false
+	if !next.IsZero() {
+		if d := time.Until(next); d > 0 {
+			secUntil = d.Seconds()
+			withinWindow = d <= 5*time.Minute
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"nextRestartAt":       next.Format(time.RFC3339),
+		"secUntilRestart":     secUntil,
+		"withinWarningWindow": withinWindow,
 	})
 }
 
@@ -796,6 +869,10 @@ func handleMySubmissions(w http.ResponseWriter, r *http.Request) {
 //
 // Response: { "src": "/media/<id><ext>" }
 func handleUploadMedia(w http.ResponseWriter, r *http.Request) {
+	// Track this upload so the graceful-restart logic can wait for it to finish.
+	activeUploads.Add(1)
+	defer activeUploads.Add(-1)
+
 	// Enforce a generous body limit (3 GB covers 2 GB raw + base64 overhead).
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBodyBytes)
 

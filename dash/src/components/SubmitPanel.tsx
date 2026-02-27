@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AdType, PendingAd } from "../types";
+import { restartWarning } from "../api";
 import PreviewModal from "./PreviewModal";
 import "./SubmitPanel.css";
 
@@ -187,6 +188,34 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // ── Restart warning ────────────────────────────────────────────────────────
+  const [restartWarningMsg, setRestartWarningMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function check() {
+      const w = await restartWarning();
+      if (cancelled) return;
+      if (w?.withinWarningWindow && w.secUntilRestart > 0) {
+        const mins = Math.ceil(w.secUntilRestart / 60);
+        setRestartWarningMsg(
+          `Bernard will restart in ~${mins} minute${mins !== 1 ? "s" : ""} for routine maintenance. ` +
+          `Any upload in progress will be allowed to finish first.`,
+        );
+      } else {
+        setRestartWarningMsg(null);
+      }
+    }
+
+    check();
+    const id = window.setInterval(check, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   const cfg = TYPE_CONFIG[type];
   // The URL to preview — set when an upload completed or a URL is pasted
   const previewSrc = mode === "upload" ? (uploadedUrl ?? "") : url.trim();
@@ -331,6 +360,12 @@ export default function SubmitPanel({ submitterName, submitterEmail, onSubmit }:
           item={{ name: name.trim() || "Preview", type, src: previewSrc }}
           onClose={() => setPreviewOpen(false)}
         />
+      )}
+      {restartWarningMsg && (
+        <div className="sp-restart-warning">
+          <span className="sp-restart-warning-icon">⚠</span>
+          <span>{restartWarningMsg}</span>
+        </div>
       )}
       <div className="sp-type-row">
         {(Object.keys(TYPE_CONFIG) as AdType[]).map((t) => (

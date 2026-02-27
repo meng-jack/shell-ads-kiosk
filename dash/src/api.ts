@@ -65,6 +65,8 @@ export interface AdminStats {
   playlist: { active: number; approved: number; submitted: number; denied: number };
   build: string;
   updating: boolean;
+  launcherUptimeSec: number;
+  nextAutoRestartSec: number;
 }
 
 export interface SubmissionItem {
@@ -106,6 +108,23 @@ export async function liveFeed(): Promise<KioskAd[]> {
   const res = await fetch("/api/live-ads");
   if (!res.ok) return [];
   return res.json() as Promise<KioskAd[]>;
+}
+
+export interface RestartWarning {
+  nextRestartAt: string;      // ISO 8601
+  secUntilRestart: number;
+  withinWarningWindow: boolean;
+}
+
+/** Poll before uploads / submissions to warn users of an imminent kiosk restart. */
+export async function restartWarning(): Promise<RestartWarning | null> {
+  try {
+    const res = await fetch("/api/restart-warning");
+    if (!res.ok) return null;
+    return res.json() as Promise<RestartWarning>;
+  } catch {
+    return null;
+  }
 }
 
 export type UpdateStage =

@@ -252,6 +252,14 @@ function StatsBar({
   const [extraSec, setExtraSec] = useState(0);
   const baseTimeRef = useRef<{ uptimeSec: number; at: number } | null>(null);
 
+  // Do the same for launcher uptime.
+  const [launcherExtraSec, setLauncherExtraSec] = useState(0);
+  const launcherBaseRef = useRef<{ uptimeSec: number; at: number } | null>(null);
+
+  // Next-restart countdown (ticks down every second).
+  const [restartExtraSec, setRestartExtraSec] = useState(0);
+  const restartBaseRef = useRef<{ secUntil: number; at: number } | null>(null);
+
   useEffect(() => {
     if (!stats?.kiosk.running) {
       setExtraSec(0);
@@ -268,6 +276,30 @@ function StatsBar({
     return () => clearInterval(id);
   }, [stats]);
 
+  useEffect(() => {
+    if (!stats) return;
+    launcherBaseRef.current = { uptimeSec: stats.launcherUptimeSec ?? 0, at: Date.now() };
+    setLauncherExtraSec(0);
+    const id = window.setInterval(() => {
+      if (launcherBaseRef.current) {
+        setLauncherExtraSec(Math.floor((Date.now() - launcherBaseRef.current.at) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [stats]);
+
+  useEffect(() => {
+    if (!stats || !stats.nextAutoRestartSec) return;
+    restartBaseRef.current = { secUntil: stats.nextAutoRestartSec, at: Date.now() };
+    setRestartExtraSec(0);
+    const id = window.setInterval(() => {
+      if (restartBaseRef.current) {
+        setRestartExtraSec(Math.floor((Date.now() - restartBaseRef.current.at) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [stats]);
+
   if (!stats)
     return (
       <div className="adm-stats-bar adm-stats-bar--loading">Loading stats…</div>
@@ -276,6 +308,12 @@ function StatsBar({
   const k = stats.kiosk;
   const liveUptime =
     k.running && baseTimeRef.current ? k.uptimeSec + extraSec : k.uptimeSec;
+
+  const launcherUptime = (stats.launcherUptimeSec ?? 0) + launcherExtraSec;
+
+  const rawRestartSec = stats.nextAutoRestartSec ?? 0;
+  const remainingRestartSec = Math.max(0, rawRestartSec - restartExtraSec);
+  const restartIsImminent = remainingRestartSec > 0 && remainingRestartSec <= 300;
 
   return (
     <div className="adm-stats-bar">
@@ -304,6 +342,18 @@ function StatsBar({
         <span className="adm-stat-val">{k.restarts}</span>
       </div>
       <div className="adm-stat">
+        <span className="adm-stat-label">Launcher uptime</span>
+        <span className="adm-stat-val">{fmtUptime(launcherUptime)}</span>
+      </div>
+      {remainingRestartSec > 0 && (
+        <div className="adm-stat">
+          <span className="adm-stat-label">Next restart</span>
+          <span className={`adm-stat-val${restartIsImminent ? " adm-stat-val--yellow" : ""}`}>
+            {fmtUptime(remainingRestartSec)}
+          </span>
+        </div>
+      )}
+      <div className="adm-stat">
         <span className="adm-stat-label">Build</span>
         <span className="adm-stat-val">{stats.build}</span>
       </div>
@@ -311,6 +361,13 @@ function StatsBar({
         <div className="adm-stat">
           <span className="adm-stat-label">Update</span>
           <span className="adm-stat-val adm-stat-val--yellow">In progress</span>
+        </div>
+      )}
+      {restartIsImminent && (
+        <div className="adm-stat adm-stat--warn-banner">
+          <span className="adm-stat-val adm-stat-val--yellow">
+            ⚠ Bernard will restart in ~{fmtUptime(remainingRestartSec)} — any active uploads will finish first.
+          </span>
         </div>
       )}
       <div className="adm-stat adm-stat--push adm-stat--controls">
