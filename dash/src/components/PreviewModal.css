@@ -1,33 +1,36 @@
-/* ── Backdrop ──────────────────────────────────────────────────────────────── */
+/* ── Backdrop ────────────────────────────────────────────────────────────── */
 .pm-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.80);
+    background: rgba(0, 0, 0, 0.85);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 500;
-    padding: 24px;
+    padding: clamp(16px, 2vw, 32px);
+    backdrop-filter: blur(4px);
 }
 
 /* ── Modal shell ───────────────────────────────────────────────────────────── */
 .pm-modal {
-    background: #1a1010;
+    background: var(--primary-light);
     border: 1px solid var(--line-hi);
+    border-radius: var(--radius-lg);
     width: 100%;
-    max-width: 840px;
+    max-width: 900px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
-/* ── Header ────────────────────────────────────────────────────────────────── */
+/* ── Header ────────────────────────────────────────────────────────────── */
 .pm-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 14px 18px;
+    padding: clamp(12px, 1.5vw, 18px);
     border-bottom: 1px solid var(--line);
     flex-shrink: 0;
 }
@@ -40,7 +43,7 @@
 }
 
 .pm-name {
-    font-size: 14px;
+    font-size: clamp(13px, 1vw, 15px);
     font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
@@ -48,7 +51,7 @@
 }
 
 .pm-close {
-    background: none;
+    background: transparent;
     border: 1px solid var(--line);
     color: var(--cream);
     font-size: 12px;
@@ -60,20 +63,23 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0.6;
-    transition: opacity 0.12s;
+    opacity: 0.60;
+    transition: var(--transition);
     font-family: var(--font);
+    border-radius: var(--radius-sm);
 }
 
 .pm-close:hover {
     opacity: 1;
+    border-color: var(--cream-25);
+    background: var(--surface);
 }
 
-/* ── Body — strict 16:9 for image/video ────────────────────────────────────── */
+/* ── Body — strict 16:9 for image/video ────────────────────────────── */
 .pm-body {
     width: 100%;
     aspect-ratio: 16 / 9;
-    background: #0d0808;
+    background: var(--primary);
     overflow: hidden;
     position: relative;
     display: flex;
@@ -81,7 +87,7 @@
     justify-content: center;
 }
 
-/* ── Body — natural height for html/web content ────────────────────────────── */
+/* ── Body — natural height for html/web content ──────────────────────── */
 .pm-body--html {
     aspect-ratio: unset;
     height: 540px;
@@ -111,25 +117,40 @@
     inset: 0;
 }
 
-/* ── Type badges ───────────────────────────────────────────────────────────── */
+/* ── Type badges ───────────────────────────────────────────────────── */
 .pm-type {
-    font-size: 9px;
+    font-size: 8px;
     font-weight: 800;
     letter-spacing: 0.8px;
     text-transform: uppercase;
-    padding: 1px 6px;
+    padding: 2px 8px;
     flex-shrink: 0;
+    border-radius: 3px;
 }
 
-.pm-type--image { background: rgba(96, 165, 250, 0.12); color: #93c5fd; border: 1px solid rgba(96, 165, 250, 0.2); }
-.pm-type--video { background: rgba(167, 139, 250, 0.12); color: #c4b5fd; border: 1px solid rgba(167, 139, 250, 0.2); }
-.pm-type--html  { background: rgba(52, 211, 153, 0.10);  color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.2); }
+.pm-type--image { 
+    background: rgba(96, 165, 250, 0.15); 
+    color: #93c5fd; 
+    border: 1px solid rgba(96, 165, 250, 0.2);
+}
 
-/* ── No-source placeholder ─────────────────────────────────────────────────── */
+.pm-type--video { 
+    background: rgba(167, 139, 250, 0.15); 
+    color: #c4b5fd; 
+    border: 1px solid rgba(167, 139, 250, 0.2);
+}
+
+.pm-type--html  { 
+    background: rgba(52, 211, 153, 0.15);  
+    color: #6ee7b7; 
+    border: 1px solid rgba(52, 211, 153, 0.2);
+}
+
+/* ── No-source placeholder ───────────────────────────────────────────── */
 .pm-no-src {
-    font-size: 12px;
+    font-size: clamp(12px, 1vw, 14px);
     color: var(--dim);
-    opacity: 0.45;
+    opacity: 0.50;
     text-align: center;
-    padding: 0 24px;
+    padding: 0 clamp(16px, 2vw, 32px);
 }

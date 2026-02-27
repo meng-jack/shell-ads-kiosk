@@ -2,11 +2,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--cream-08);
-  border: 1px solid var(--cream-15);
-  border-radius: var(--radius);
-  padding: 20px 0;
+  background: var(--surface-lo);
+  border: 1px solid var(--line-hi);
+  border-radius: var(--radius-lg);
+  padding: clamp(16px, 3vw, 24px) 0;
   flex-shrink: 0;
+  width: 100%;
+  max-width: 800px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(10px);
 }
 
 .statsbar-group {
@@ -20,28 +24,29 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  padding: 0 clamp(16px, 2vw, 24px);
 }
 
 .statsbar-num {
-  font-size: clamp(28px, 3.5vw, 42px);
+  font-size: clamp(24px, 3.5vw, 40px);
   font-weight: 800;
-  letter-spacing: -1.5px;
+  letter-spacing: -1.2px;
   line-height: 1;
-  color: var(--cream);
+  color: var(--accent-light);
 }
 
 .statsbar-label {
-  font-size: clamp(11px, 1vw, 13px);
+  font-size: clamp(10px, 1vw, 12px);
   font-weight: 700;
   letter-spacing: 1px;
   text-transform: uppercase;
-  opacity: 0.60;
+  opacity: 0.55;
 }
 
 .statsbar-divider {
   width: 1px;
   height: 48px;
-  background: var(--cream-30);
+  background: var(--line);
   flex-shrink: 0;
 }

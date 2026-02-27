@@ -4,57 +4,67 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 48px 24px;
+    padding: clamp(24px, 5vw, 64px) clamp(16px, 3vw, 40px);
+    gap: 32px;
 }
 
 /* When the page may have many items, align to top so it scrolls naturally */
 .page--scrollable {
     justify-content: flex-start;
-    padding-top: 40px;
-    padding-bottom: 60px;
+    padding-top: clamp(32px, 5vw, 48px);
+    padding-bottom: clamp(48px, 5vw, 80px);
 }
 
 .wordmark {
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 3px;
+    font-size: clamp(9px, 0.8vw, 12px);
+    font-weight: 900;
+    letter-spacing: 2px;
     text-transform: uppercase;
     opacity: 0.45;
     margin-bottom: 8px;
 }
 
 .page-title {
-    font-size: 26px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    margin-bottom: 36px;
+    font-size: clamp(24px, 5vw, 48px);
+    font-weight: 900;
+    letter-spacing: -1px;
+    margin-bottom: clamp(24px, 3vw, 40px);
     text-align: center;
+    background: linear-gradient(135deg, var(--cream), var(--cream-75));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 .container {
     width: 100%;
-    max-width: 460px;
+    max-width: 520px;
     border: 1px solid var(--line);
-    padding: 32px 28px;
+    border-radius: var(--radius-lg);
+    padding: clamp(24px, 4vw, 40px);
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: 16px;
+    background: var(--surface-lo);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(10px);
 }
 
 .container--wide {
-    max-width: 640px;
+    max-width: 720px;
 }
 
 /* ── Page footer ──────────────────────────────────────────────────────────── */
 .page-footer {
-    margin-top: 32px;
-    font-size: 11px;
+    margin-top: clamp(24px, 3vw, 40px);
+    font-size: clamp(10px, 0.8vw, 12px);
     opacity: 0.35;
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
     justify-content: center;
+    letter-spacing: 0.5px;
 }
 
 .page-footer-sep {
@@ -65,70 +75,78 @@
     color: inherit;
     text-decoration: none;
     font-weight: 700;
+    transition: opacity 0.2s;
 }
 
 .page-footer-link:hover {
-    opacity: 1;
+    opacity: 0.8;
     text-decoration: underline;
 }
 
 .page-footer-link--glwts {
     font-style: italic;
-    opacity: 0.8;
+    opacity: 0.65;
 }
 
-/* ── Google login gate ────────────────────────────────────────────────────── */
+/* ── Google login gate ────────────────────────────────────── */
 .sub-login-wrap {
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
+    padding: clamp(20px, 3vw, 40px);
 }
 
 .sub-login-card {
     width: 100%;
-    max-width: 380px;
+    max-width: 420px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 20px;
-    background: var(--surface);
+    gap: 24px;
+    background: var(--surface-lo);
     border: 1px solid var(--line-hi);
-    padding: 40px 36px;
+    border-radius: var(--radius-lg);
+    padding: clamp(32px, 4vw, 48px);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(10px);
 }
 
 .sub-login-title {
-    font-size: 22px;
-    font-weight: 800;
-    letter-spacing: -0.4px;
+    font-size: clamp(20px, 4vw, 28px);
+    font-weight: 900;
+    letter-spacing: -0.8px;
 }
 
 .sub-login-hint {
-    font-size: 13px;
-    opacity: 0.55;
+    font-size: clamp(12px, 1vw, 14px);
+    opacity: 0.60;
     text-align: center;
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
 .sub-login-err {
-    font-size: 12px;
-    color: var(--red);
+    font-size: 13px;
+    color: var(--accent-light);
     text-align: center;
+    font-weight: 600;
 }
 
 /* ── Profile bar ──────────────────────────────────────────────────────────── */
 .sub-profile-bar {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     width: 100%;
-    max-width: 760px;
-    background: var(--surface);
+    max-width: 860px;
+    background: var(--surface-lo);
     border: 1px solid var(--line);
-    padding: 10px 16px;
+    border-radius: var(--radius-lg);
+    padding: clamp(12px, 2vw, 16px);
     margin-bottom: 24px;
     flex-wrap: wrap;
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(10px);
 }
 
 .sub-profile-tabs {
@@ -139,11 +157,12 @@
 }
 
 .sub-profile-avatar {
-    width: 38px;
-    height: 38px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
+    border: 2px solid var(--line-hi);
 }
 
 .sub-profile-info {
@@ -155,7 +174,7 @@
 }
 
 .sub-profile-name {
-    font-size: 13px;
+    font-size: clamp(12px, 1vw, 14px);
     font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
@@ -164,7 +183,7 @@
 
 .sub-profile-email {
     font-size: 11px;
-    opacity: 0.5;
+    opacity: 0.50;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -173,39 +192,46 @@
 .sub-profile-signout {
     font-size: 11px;
     font-weight: 700;
-    background: none;
+    background: transparent;
     border: 1px solid var(--line);
-    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    padding: 6px 12px;
     color: inherit;
     cursor: pointer;
-    opacity: 0.6;
+    opacity: 0.60;
     flex-shrink: 0;
-    transition: opacity 0.15s;
+    transition: var(--transition);
 }
 
 .sub-profile-signout:hover {
     opacity: 1;
+    border-color: var(--cream-25);
+    background: var(--surface);
 }
 
 .sub-profile-nav {
     font-size: 11px;
     font-weight: 700;
-    background: none;
+    background: transparent;
     border: 1px solid var(--line);
-    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    padding: 6px 12px;
     color: inherit;
     cursor: pointer;
-    opacity: 0.6;
+    opacity: 0.60;
     flex-shrink: 0;
-    transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+    transition: var(--transition);
 }
 
 .sub-profile-nav:hover {
     opacity: 1;
+    border-color: var(--cream-25);
+    background: var(--surface);
 }
 
 .sub-profile-nav--active {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.25);
+    background: var(--accent-muted);
+    border-color: var(--accent);
+    color: var(--accent-light);
 }

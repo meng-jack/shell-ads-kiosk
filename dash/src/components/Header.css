@@ -2,8 +2,9 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
+  gap: clamp(20px, 3vw, 40px);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .header-brand {
@@ -13,38 +14,44 @@
 }
 
 .header-title {
-  font-size: clamp(36px, 5vw, 56px);
+  font-size: clamp(32px, 6vw, 56px);
   font-weight: 900;
-  letter-spacing: -2px;
-  line-height: 1;
+  letter-spacing: -1.5px;
+  line-height: 1.1;
   color: var(--cream);
+  background: linear-gradient(135deg, var(--cream), var(--cream-75));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .header-tagline {
-  font-size: clamp(13px, 1.4vw, 16px);
+  font-size: clamp(12px, 1.4vw, 16px);
   font-weight: 600;
   opacity: 0.65;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.4px;
 }
 
 .header-clock {
   text-align: right;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .clock-time {
-  font-size: clamp(32px, 4vw, 48px);
+  font-size: clamp(28px, 4vw, 48px);
   font-weight: 800;
-  letter-spacing: -1.5px;
+  letter-spacing: -1px;
   line-height: 1;
-  color: var(--cream);
+  color: var(--accent-light);
   font-variant-numeric: tabular-nums;
 }
 
 .clock-date {
-  margin-top: 7px;
-  font-size: clamp(12px, 1.2vw, 15px);
+  font-size: clamp(11px, 1.2vw, 14px);
   font-weight: 600;
   opacity: 0.60;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.3px;
 }

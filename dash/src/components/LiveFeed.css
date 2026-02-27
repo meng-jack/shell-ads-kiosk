@@ -6,22 +6,22 @@
 }
 
 .lf-empty {
-    font-size: 13px;
+    font-size: clamp(12px, 1vw, 14px);
     color: var(--dim);
-    opacity: 0.5;
+    opacity: 0.55;
     text-align: center;
-    padding: 48px 0;
+    padding: clamp(40px, 6vw, 60px) 0;
     margin: 0;
 }
 
 .lf-count {
-    font-size: 10px;
+    font-size: clamp(9px, 0.8vw, 11px);
     font-weight: 800;
     letter-spacing: 1.5px;
     text-transform: uppercase;
     color: var(--dim);
-    opacity: 0.5;
-    margin: 0 0 14px;
+    opacity: 0.55;
+    margin: 0 0 clamp(12px, 1.5vw, 16px);
 }
 
 .lf-list {
@@ -31,21 +31,26 @@
     border-top: 1px solid var(--line);
 }
 
-/* ── Row ───────────────────────────────────────────────────────────────────── */
+/* ── Row ──────────────────────────────────────────────────────────────────── */
 .lf-row {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 12px 0;
+    gap: clamp(12px, 1.5vw, 16px);
+    padding: clamp(12px, 1.5vw, 16px) 0;
     border-bottom: 1px solid var(--line);
+    transition: var(--transition);
+}
+
+.lf-row:hover {
+    background: var(--surface-lo);
 }
 
 .lf-num {
-    font-size: 11px;
+    font-size: clamp(10px, 0.9vw, 12px);
     font-weight: 800;
     color: var(--dim);
-    opacity: 0.35;
-    width: 22px;
+    opacity: 0.40;
+    width: 24px;
     text-align: right;
     flex-shrink: 0;
 }
@@ -55,11 +60,11 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: clamp(4px, 0.5vw, 6px);
 }
 
 .lf-name {
-    font-size: 13px;
+    font-size: clamp(12px, 1vw, 14px);
     font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
@@ -73,54 +78,72 @@
     flex-wrap: wrap;
 }
 
-/* ── Type badge ────────────────────────────────────────────────────────────── */
+/* ── Type badge ────────────────────────────────────────────────────────── */
 .lf-type {
-    font-size: 9px;
+    font-size: 8px;
     font-weight: 800;
     letter-spacing: 0.8px;
     text-transform: uppercase;
-    padding: 1px 6px;
+    padding: 2px 8px;
     flex-shrink: 0;
+    border-radius: 3px;
 }
 
-.lf-type--image { background: rgba(96, 165, 250, 0.12); color: #93c5fd; border: 1px solid rgba(96, 165, 250, 0.2); }
-.lf-type--video { background: rgba(167, 139, 250, 0.12); color: #c4b5fd; border: 1px solid rgba(167, 139, 250, 0.2); }
-.lf-type--html  { background: rgba(52, 211, 153, 0.10);  color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.2); }
+.lf-type--image { 
+    background: rgba(96, 165, 250, 0.15); 
+    color: #93c5fd; 
+    border: 1px solid rgba(96, 165, 250, 0.2);
+}
+
+.lf-type--video { 
+    background: rgba(167, 139, 250, 0.15); 
+    color: #c4b5fd; 
+    border: 1px solid rgba(167, 139, 250, 0.2);
+}
+
+.lf-type--html  { 
+    background: rgba(52, 211, 153, 0.15);  
+    color: #6ee7b7; 
+    border: 1px solid rgba(52, 211, 153, 0.2);
+}
 
 .lf-dur {
-    font-size: 10px;
+    font-size: clamp(10px, 0.9vw, 12px);
     font-weight: 700;
+    color: var(--dim);
+    opacity: 0.50;
+}
+
+.lf-date {
+    font-size: clamp(9px, 0.8vw, 11px);
     color: var(--dim);
     opacity: 0.45;
 }
 
-.lf-date {
-    font-size: 10px;
-    color: var(--dim);
-    opacity: 0.4;
-}
-
-/* ── Preview button ────────────────────────────────────────────────────────── */
+/* ── Preview button ────────────────────────────────────────────────── */
 .lf-preview-btn {
-    font-size: 10px;
+    font-size: clamp(10px, 0.9vw, 12px);
     font-weight: 700;
-    background: none;
+    background: transparent;
     border: 1px solid var(--line);
     color: var(--cream);
-    padding: 3px 10px;
+    padding: 5px 12px;
     cursor: pointer;
-    opacity: 0.55;
-    transition: opacity 0.12s, border-color 0.12s;
+    opacity: 0.60;
+    transition: var(--transition);
     flex-shrink: 0;
     font-family: var(--font);
+    border-radius: var(--radius-sm);
 }
 
 .lf-preview-btn:hover:not(:disabled) {
     opacity: 1;
-    border-color: var(--line-hi);
+    border-color: var(--accent);
+    color: var(--accent-light);
+    background: var(--accent-muted);
 }
 
 .lf-preview-btn:disabled {
-    opacity: 0.2;
+    opacity: 0.25;
     cursor: default;
 }
