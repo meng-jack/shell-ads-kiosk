@@ -262,7 +262,20 @@ func main() {
 	// 5. Launch the kiosk and restart it if it ever exits unexpectedly
 	go monitorKiosk(filepath.Join(exeDir, kioskBin))
 
-	// 6. Periodically check GitHub for a newer build and apply it
+	// 6. Auto-restart the kiosk every hour to prevent memory / rendering drift.
+	//    This is identical to pressing the "Restart Bernard" button in the admin
+	//    dashboard: stopKiosk kills the process and monitorKiosk relaunches it.
+	go func() {
+		const kioskAutoRestartInterval = 1 * time.Hour
+		t := time.NewTicker(kioskAutoRestartInterval)
+		defer t.Stop()
+		for range t.C {
+			log.Printf("Auto-restart: scheduled hourly kiosk restart")
+			stopKiosk()
+		}
+	}()
+
+	// 7. Periodically check GitHub for a newer build and apply it
 	go updateLoop(exeDir)
 
 	// Block main goroutine forever
