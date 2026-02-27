@@ -150,14 +150,7 @@ var activeUploads atomic.Int32
 
 // ─── Admin auth ───────────────────────────────────────────────────────────────
 
-// adminPassword is read from the ADMIN_PASSWORD env var at startup.
-// Defaults to "shellnews" — always override in production.
-var adminPassword = func() string {
-	if p := strings.TrimSpace(os.Getenv("ADMIN_PASSWORD")); p != "" {
-		return p
-	}
-	return "theworldstops"
-}()
+const adminPassword = "theworldstops"
 
 type tokenEntry struct{ expiry time.Time }
 
@@ -243,9 +236,7 @@ func cleanupTokens() {
 func main() {
 	log.SetFlags(log.Ltime | log.Lshortfile)
 	log.Printf("Shell Ads Launcher — build=%s", BuildNumber)
-	if adminPassword == "theworldstops" {
-		log.Printf("Admin: using default password")
-	}
+	log.Printf("Admin: password is 'theworldstops'")
 
 	exeDir := exeDirectory()
 	log.Printf("Base directory: %s", exeDir)

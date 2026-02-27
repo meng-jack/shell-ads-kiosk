@@ -22,6 +22,7 @@ async function req<T>(
   method: string,
   path: string,
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
   const token = getToken();
   const res = await fetch(path, {
@@ -31,6 +32,7 @@ async function req<T>(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
   });
   if (res.status === 401) {
     clearToken();
@@ -145,8 +147,8 @@ export interface UpdateStatus {
 }
 
 export const adminApi = {
-  login: (password: string) =>
-    req<{ token: string }>("POST", "/api/admin/auth", { password }),
+  login: (password: string, signal?: AbortSignal) =>
+    req<{ token: string }>("POST", "/api/admin/auth", { password }, signal),
   logout: () => req<{ ok: boolean }>("DELETE", "/api/admin/logout"),
   state: () => req<AdminState>("GET", "/api/admin/state"),
   stats: () => req<AdminStats>("GET", "/api/admin/stats"),

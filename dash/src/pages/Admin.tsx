@@ -41,11 +41,23 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
     setLoading(true);
     setErr(null);
     try {
-      const { token } = await adminApi.login(pw);
+      // Abort after 15 s so the button never stays frozen on "Checking…"
+      const { token } = await adminApi.login(pw, AbortSignal.timeout(15_000));
       setToken(token);
       onSuccess();
-    } catch {
-      setErr("Wrong password.");
+    } catch (e: unknown) {
+      const isTimeout =
+        e instanceof DOMException &&
+        (e.name === "TimeoutError" || e.name === "AbortError");
+      const isWrongPw =
+        e instanceof Error && e.message === "unauthorized";
+      setErr(
+        isTimeout
+          ? "Connection timed out — is the server reachable?"
+          : isWrongPw
+            ? "Wrong password."
+            : "Could not reach the server. Please try again.",
+      );
       setPw("");
       inputRef.current?.focus();
     } finally {
