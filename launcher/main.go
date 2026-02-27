@@ -582,6 +582,7 @@ func handleAdminAuth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad JSON", http.StatusBadRequest)
 		return
 	}
+	log.Printf("Admin: attempting login with password=[%s], expected=[%s], equal=%v", body.Password, adminPassword, body.Password == adminPassword)
 	if body.Password != adminPassword {
 		http.Error(w, `{"error":"wrong password"}`, http.StatusUnauthorized)
 		return
